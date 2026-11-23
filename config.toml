@@ -1,0 +1,11 @@
+# Which ZIMs to track and the update/retention policy (committed).
+# Machine-specific paths and the port are in .env instead.
+# Nothing reads this file yet: config.py arrives in Stage 2.
+
+[policy]
+min_age_months = 6   # don't replace a local copy younger than this
+keep_versions = 3    # per tracked ZIM; older versions are pruned after a verified update
+
+[[zim]]
+name = "wikipedia_en_all"   # the catalog's <name> (not "wikipedia_en_all_maxi")
+flavour = "maxi"            # the catalog's <flavour>; files are <name>_<flavour>_<YYYY-MM>.zim

@@ -1,0 +1,19 @@
+[project]
+name = "wikibackup"
+version = "0.1.0"
+description = "Keep an offline, LAN-served copy of English Wikipedia using Kiwix ZIM files."
+authors = [{ name = "maxroberts" }]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+wikibackup = "wikibackup.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
