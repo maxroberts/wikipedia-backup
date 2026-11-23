@@ -22,7 +22,7 @@ import pytest
 
 from wikibackup import catalog, cli, download, library, update
 from wikibackup.catalog import Metalink, Release
-from wikibackup.config import Config, Policy, ZimSpec
+from wikibackup.config import Config, KiwixTools, Policy, ZimSpec
 
 BOOK = ZimSpec("wikipedia_en_all", "maxi")
 TODAY = date(2027, 3, 1)
@@ -37,6 +37,7 @@ def config(tmp_path, monkeypatch):
     """Config with folders under tmp_path; installed for cli.main as well."""
     cfg = Config(
         policy=Policy(min_age_months=6, keep_versions=3), zims=(BOOK,),
+        kiwix_tools=KiwixTools("3.8.2", ("macos-arm64",)),
         data_dir=tmp_path / "archive", hot_dir=tmp_path / "hot", state_dir=tmp_path / "state",
         bind_address="all", port=8080, log_level="INFO",
     )
@@ -169,6 +170,19 @@ def test_full_ssd_skips_hot_copy(config, kiwix, monkeypatch, caplog):
     assert archive_files(config) == [name("2027-02")]
     assert not config.hot_dir.exists()
     assert "hot copy skipped" in caplog.text
+
+
+def test_unwritable_ssd_skips_hot_copy(config, kiwix, monkeypatch, caplog):
+    """E.g. HOT_DIR's parent is owned by root (the T7's top level, found 2026-11-23)."""
+    kiwix.publish("2027-02")
+
+    def denied(src, dest_dir, sha256):
+        raise PermissionError(13, "Permission denied", str(dest_dir))
+
+    monkeypatch.setattr(update.download, "copy_verified", denied)
+    update.run_update(config, TODAY)
+    assert archive_files(config) == [name("2027-02")]
+    assert "hot copy skipped: [Errno 13] Permission denied" in caplog.text
 
 
 def test_full_archive_raises_space_error(config, kiwix, monkeypatch):

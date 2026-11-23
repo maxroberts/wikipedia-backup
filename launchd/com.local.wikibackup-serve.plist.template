@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent that runs `wikibackup serve`: kiwix-serve on the LAN, with library.xml
+  kept current (see src/wikibackup/server.py). A template: install.sh replaces __REPO__
+  and __HOME__ and installs the result as
+  ~/Library/LaunchAgents/com.local.wikibackup-serve.plist. Edit this file, not the copy.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.local.wikibackup-serve</string>
+
+    <!-- The venv's entry point, so uv isn't needed at run time. Settings come from the
+         repo's config.toml and .env, which wikibackup finds from its own location. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO__/.venv/bin/wikibackup</string>
+        <string>serve</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart if it exits (kiwix-serve died, or the T7 holding the code was missing at
+         start), but no more often than once a minute. -->
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+
+    <!-- On the internal disk, so launchd can always open them, whichever drives are
+         attached. -->
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/wikibackup/serve.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/wikibackup/serve.log</string>
+</dict>
+</plist>

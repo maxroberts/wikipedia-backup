@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from wikibackup import catalog, cli
-from wikibackup.config import Config, Policy, ZimSpec
+from wikibackup.config import Config, KiwixTools, Policy, ZimSpec
 
 FIXTURES = Path(__file__).parent / "fixtures"
 MAXI = ZimSpec("wikipedia_en_all", "maxi")
@@ -24,6 +24,7 @@ def config(tmp_path, monkeypatch):
     """A Config with archive, hot and state folders under tmp_path, installed in cli."""
     cfg = Config(
         policy=Policy(min_age_months=6, keep_versions=3), zims=(MAXI,),
+        kiwix_tools=KiwixTools("3.8.2", ("macos-arm64",)),
         data_dir=tmp_path / "archive", hot_dir=tmp_path / "hot", state_dir=tmp_path / "state",
         bind_address="all", port=8080, log_level="INFO",
     )
@@ -90,7 +91,10 @@ def test_status_fresh_install(config, capsys):
     assert "archive (DATA_DIR): " in out and "folder not created yet" in out
     assert "archive:  no versions" in out
     assert "hot copy: none  no hot copy" in out
-    assert "server: not checked yet" in out
+    assert "library.xml not created yet" in out
+    assert "local:     http://127.0.0.1:8080/ -> " in out
+    assert "firewall:  " in out
+    assert "kiwix-tools 3.8.2: installed" in out  # the fake tools from conftest.py
 
 
 def test_status_lists_versions_and_current_hot_copy(config, capsys):

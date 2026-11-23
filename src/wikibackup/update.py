@@ -5,7 +5,9 @@ through each tracked book in ``config.toml``. This module decides what to do and
 order; ``download.py`` moves the bytes, and ``library.py`` reads the archive and writes
 the manifest.
 
-**update**, for each book (Design section of ``docs/kiwix_backup_plan.md``):
+**update** first refreshes the kiwix-tools backups (``software.ensure_backups``; problems
+there are only warnings). Then, for each book (Design section of
+``docs/kiwix_backup_plan.md``):
 
 1. Read the catalog and apply ``library.decide_update``.
 2. If it says download: fetch the metalink; check free space; download into
@@ -18,17 +20,21 @@ the manifest.
 
 **prune**, for each book: steps 3 and 4 only, with no network access.
 
+At the end of both commands, ``library.xml`` is rebuilt so kiwix-serve serves the newest
+copy at once. A failure there is only a warning, because the ``serve`` loop rebuilds within
+60 s anyway.
+
 **Safety rules:**
 
 - Nothing is deleted until its replacement is verified. Only verified versions count
   towards ``keep_versions``, so a failed download never causes a prune.
 - Order for deleting an archived version: rebuild ``library.xml`` without it, delete the
   file, then remove its manifest entry. A crash in between leaves a manifest entry whose
-  file is missing, and the next prune cleans that up.
+  file is missing, and the next prune cleans that up. Only the newest version is ever
+  served, and pruning never deletes the newest, so the rebuild is a safety check. If it
+  fails, or would still serve a file due for deletion, nothing is deleted.
 - Files in ``zim/`` that the manifest doesn't list are never deleted automatically,
   except as in step 2. They're only logged.
-- **Stage 3 limitation:** ``rebuild_library`` is a no-op until Stage 4 adds
-  ``library.xml``. That's safe for now because nothing serves the files yet.
 
 **Locking:** ``DATA_DIR/.wikibackup.lock`` is held with ``flock`` for the whole run, so a
 manual run and the monthly launchd run can't overlap. A second run fails at once with
@@ -48,7 +54,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from wikibackup import download, library
+from wikibackup import download, library, server, software
 from wikibackup.catalog import Release, fetch_metalink, latest_release
 from wikibackup.config import Config, ZimSpec
 
@@ -100,13 +106,16 @@ def free_bytes(path: Path) -> int:
 
 
 def rebuild_library(config: Config, exclude: set[Path] = frozenset()) -> None:
-    """Rebuild ``library.xml`` from the files available now, leaving out ``exclude``.
+    """Rebuild ``library.xml`` (``server.build_library``) before deleting ``exclude``.
 
-    **Stage 3: a no-op** (it only logs at DEBUG level). Stage 4 implements it with
-    kiwix-manage. It's called before any file is deleted, so that kiwix-serve stops
-    serving a file before it disappears.
+    It's called before any file is deleted, so kiwix-serve stops serving a file before it
+    disappears. Raises ``server.ServerError`` if the build fails, or if the new library
+    still lists a file in ``exclude``; the caller then deletes nothing.
     """
-    log.debug("rebuild_library: not implemented until Stage 4 (exclude=%s)", sorted(exclude))
+    served = {p.resolve() for p in server.build_library(config)}
+    still = served & {p.resolve() for p in exclude}
+    if still:
+        raise server.ServerError(f"library.xml still serves {sorted(still)}; not deleting")
 
 
 def _add_manifest_entry(config: Config, release: Release, size: int, sha256: str) -> None:
@@ -177,7 +186,8 @@ def ensure_hot_copy(config: Config, zim: ZimSpec) -> None:
     ``zim``, and nothing older.
 
     Does nothing if ``HOT_DIR`` is off or the archive has no verified version, and only
-    logs a warning if ``HOT_DIR``'s drive isn't mounted or lacks free space. After the
+    logs a warning if ``HOT_DIR``'s drive isn't mounted, lacks free space, or can't be
+    written (any ``OSError`` during the copy; the temporary file is removed). After the
     copy is current, other ZIMs of this book in ``HOT_DIR`` (with their ``.sha256`` files)
     and leftover ``.tmp`` files are deleted, once ``rebuild_library`` has run. Raises
     ``download.VerifyError`` if the copy's hash is wrong.
@@ -205,9 +215,14 @@ def ensure_hot_copy(config: Config, zim: ZimSpec) -> None:
             )
             return
         log.info("making hot copy of %s (before: %s)", newest.file_name, state.note)
-        download.copy_verified(
-            config.data_dir / library.ZIM_SUBDIR / newest.file_name, hot_dir, newest.entry.sha256
-        )
+        try:
+            download.copy_verified(
+                config.data_dir / library.ZIM_SUBDIR / newest.file_name, hot_dir,
+                newest.entry.sha256,
+            )
+        except OSError as exc:  # e.g. HOT_DIR can't be created, or the SSD filled up
+            log.warning("hot copy skipped: %s", exc)
+            return
         log.info("hot copy of %s verified", newest.file_name)
 
     stale = [
@@ -261,6 +276,7 @@ def run_update(config: Config, today: date) -> None:
     """
     prepare_archive(config.data_dir)
     with archive_lock(config.data_dir):
+        software.ensure_backups(config)
         for zim in config.zims:
             manifest = library.read_manifest(config.data_dir)
             newest = library.newest_verified(library.list_archive(config.data_dir, zim, manifest))
@@ -271,6 +287,15 @@ def run_update(config: Config, today: date) -> None:
                 fetch_and_install(config, release)
             ensure_hot_copy(config, zim)
             prune_book(config, zim)
+        _refresh_library(config)
+
+
+def _refresh_library(config: Config) -> None:
+    """Rebuild ``library.xml`` at the end of a run; log a warning instead of failing."""
+    try:
+        server.build_library(config)
+    except server.ServerError as exc:
+        log.warning("couldn't rebuild library.xml (the serve loop will retry): %s", exc)
 
 
 def run_prune(config: Config) -> None:
@@ -281,3 +306,4 @@ def run_prune(config: Config) -> None:
         for zim in config.zims:
             ensure_hot_copy(config, zim)
             prune_book(config, zim)
+        _refresh_library(config)

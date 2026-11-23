@@ -7,8 +7,9 @@ the hot copy (``HOT_DIR``) and the generated ``library.xml`` (``STATE_DIR``) liv
 
 Sources and precedence:
 
-- ``config.toml`` (committed) gives ``[policy]`` and one ``[[zim]]`` table per tracked book.
-  It's required.
+- ``config.toml`` (committed) gives ``[policy]``, one ``[[zim]]`` table per tracked book,
+  and ``[kiwix_tools]`` (which kiwix-tools release and platform builds to keep). It's
+  required.
 - ``.env`` (not committed) gives machine settings as ``KEY=VALUE`` lines. It's optional;
   any key it leaves out takes its default from ``ENV_DEFAULTS``.
 - A variable set in the process environment overrides the same key in ``.env``.
@@ -29,7 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # Defaults for .env keys. These match .env.example; keep them in step.
 ENV_DEFAULTS = {
     "DATA_DIR": "/Volumes/Starfish_Prime/kiwix-data",
-    "HOT_DIR": "/Volumes/BackUp_T7/kiwix-hot",
+    "HOT_DIR": "/Volumes/BackUp_T7/wikipedia-storage",
     "STATE_DIR": "~/.local/state/wikibackup",
     "BIND_ADDRESS": "all",
     "PORT": "8080",
@@ -68,6 +69,16 @@ class Policy:
 
 
 @dataclass(frozen=True)
+class KiwixTools:
+    """``[kiwix_tools]`` in ``config.toml``: the kiwix-tools ``version`` (e.g. ``3.8.2``)
+    and the ``platforms`` whose builds are kept (e.g. ``macos-arm64``, ``linux-x86_64``),
+    named as on download.kiwix.org."""
+
+    version: str
+    platforms: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Config:
     """All settings. Paths are absolute, with ``~`` expanded.
 
@@ -76,6 +87,7 @@ class Config:
 
     policy: Policy
     zims: tuple[ZimSpec, ...]
+    kiwix_tools: KiwixTools
     data_dir: Path
     hot_dir: Path | None
     state_dir: Path
@@ -123,7 +135,8 @@ def load_config(
     root. ``environ`` defaults to ``os.environ``; tests pass a dict instead.
 
     Raises ``ConfigError`` if ``config.toml`` is missing, has no ``[[zim]]`` entries, or
-    has a missing or invalid policy value, or if ``PORT`` isn't an integer.
+    has a missing or invalid ``[policy]`` or ``[kiwix_tools]`` value, or if ``PORT`` isn't
+    an integer.
     """
     config_path = config_path or REPO_ROOT / "config.toml"
     env_path = env_path or REPO_ROOT / ".env"
@@ -140,6 +153,10 @@ def load_config(
             keep_versions=int(raw["policy"]["keep_versions"]),
         )
         zims = tuple(ZimSpec(name=z["name"], flavour=z["flavour"]) for z in raw["zim"])
+        kiwix_tools = KiwixTools(
+            version=str(raw["kiwix_tools"]["version"]),
+            platforms=tuple(raw["kiwix_tools"]["platforms"]),
+        )
     except (KeyError, TypeError, ValueError) as exc:
         raise ConfigError(f"{config_path}: missing or invalid setting: {exc}") from None
     if not zims:
@@ -160,6 +177,7 @@ def load_config(
     return Config(
         policy=policy,
         zims=zims,
+        kiwix_tools=kiwix_tools,
         data_dir=_expand(env["DATA_DIR"]),
         hot_dir=_expand(env["HOT_DIR"]) if env["HOT_DIR"] else None,
         state_dir=_expand(env["STATE_DIR"]),

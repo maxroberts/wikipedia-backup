@@ -1,6 +1,6 @@
 # Plan: offline English Wikipedia on this Mac with Kiwix
 
-**Status:** adopted, Stage 3 done (awaiting review) · **Date:** 2026-11-23 · **Scope:** downloading,
+**Status:** adopted, Stage 4 done (awaiting review) · **Date:** 2026-11-23 · **Scope:** downloading,
 keeping and serving English Wikipedia (maxi) ZIM files on this MacBook Air, for the home LAN
 
 ## TL;DR
@@ -8,10 +8,11 @@ keeping and serving English Wikipedia (maxi) ZIM files on this MacBook Air, for 
 Download the Kiwix ZIM of English Wikipedia with images (`wikipedia_en_all`, flavour `maxi`)
 about every 6 months to the archive on the HDD (`/Volumes/Starfish_Prime/kiwix-data/`), and
 keep the newest 3 there. Also keep a verified **hot copy** of the newest version on the T7
-SSD, outside Dropbox. `kiwix-serve`, under launchd, serves the newest version from the SSD
-(it falls back to the HDD copy if the T7 is missing) and the older versions from the HDD.
-That makes browsing the newest version fast and puts it on two drives. Checked on
-2026-11-23:
+SSD, outside Dropbox. `kiwix-serve`, under launchd, serves **only the newest version**:
+from the SSD, or from the HDD copy if the hot copy isn't ready. The older versions are
+backups and aren't browsable. That makes browsing fast and puts the newest version on two
+drives. The kiwix-tools builds that serve it (macOS, plus Linux for a possible move to
+Ubuntu) are backed up the same way. Checked on 2026-11-23:
 
 - The current maxi release (2026-08) is **127,418,087,648 bytes (118.7 GiB)** [3].
   - **HDD:** three versions take about **356 GiB**, briefly about **475 GiB** while a fourth
@@ -40,6 +41,11 @@ Constraints (from the user, 2026-11-23):
 - **Retention:** keep 3 versions on the HDD.
 - **Hot copy** (decided 2026-11-23): the newest version also lives on the T7 SSD, outside
   the Dropbox folder. It makes browsing faster and gives the newest version a second copy.
+- **Only the newest version is served** (decided 2026-11-23). Older versions are kept as
+  backups only.
+- **kiwix-tools backups** (decided 2026-11-23): the kiwix-tools builds are kept in the
+  archive and the hot copy, like ZIMs, including Linux builds for a possible later move to
+  Ubuntu 24.04.
 - **Network:** reachable from the home LAN, not just `localhost`.
 
 Why Kiwix ZIM and not the raw XML dumps or a Commons mirror: a ZIM is a single file that
@@ -119,8 +125,9 @@ All from the kiwix-serve documentation [5]:
   example, `wikipedia_en_all_2020-08.zim` becomes reachable as both
   `wikipedia_en_all_2020-08` and `wikipedia_en_all`. Name conflicts "are reported on STDERR
   but … only one of the entries can be accessed via the conflicting name", and the docs
-  don't say which one. With 3 kept versions the aliases would conflict, so this project
-  **does not use `-z`**. See open question 1.
+  don't say which one. Since only one version of each book is served, there's no
+  conflict, so this project **uses `-z`**. `/content/wikipedia_en_all_maxi/` then stays the
+  same across updates (tested with a small ZIM in Stage 4).
 
 ### Editing library.xml: kiwix-manage
 
@@ -132,11 +139,22 @@ kiwix-manage LIBRARYPATH (delete|remove) ZIMID ...
 ```
 
 `remove` takes the book's UUID, not its path. Rather than tracking UUIDs, the project
-**rebuilds `library.xml` from scratch** whenever the set of kept ZIMs changes: it writes a
+**rebuilds `library.xml` from scratch** whenever the set of served ZIMs changes: it writes a
 new file with `kiwix-manage <tmp> add <zim> ...`, then renames it over `library.xml` in one
-step. Whether `--monitorLibrary` notices a file that is replaced by rename (rather than
-edited in place) hasn't been tested. Stage 4 tests it, and sending SIGHUP is the fallback.
-Whether the paths stored are absolute or relative wasn't checked. Stage 4 checks this too.
+step.
+
+Tested with kiwix-tools 3.8.2 on 2026-11-23, using two small real ZIMs:
+
+- kiwix-manage stores the ZIM path **relative to the library file's folder** (e.g.
+  `path="../zims/…"`), even with `--zimPathToSave=<absolute path>`. kiwix-serve resolves it
+  correctly, so `library.xml` just mustn't be moved.
+- kiwix-manage exits 1 ("Cannot add ZIM …") if a ZIM doesn't exist.
+- `--monitorLibrary` noticed a library **replaced by rename** and served the new book about
+  2 s later. No SIGHUP is needed.
+- When a served ZIM disappears (moved away, as when its drive is unplugged), kiwix-serve
+  keeps running but answers **HTTP 500** for that book. It doesn't exit, so launchd
+  wouldn't restart it. That's why `serve` checks for changes itself (Design).
+- An **empty library** (no books) is fine: kiwix-serve starts and its home page answers 200.
 
 ### Installing kiwix-tools
 
@@ -147,8 +165,15 @@ Whether the paths stored are absolute or relative wasn't checked. Stage 4 checks
   `kiwix-tools_macos-arm64-3.8.2.tar.gz` (10.3 MB). It contains `kiwix-serve`,
   `kiwix-manage` and `kiwix-search`, and its MD5 matched the published `.md5` file
   (`60d934c0cc75e5d2db83d2ed2de000ce`).
-- The binaries haven't been run yet. The version, `--help` output and Gatekeeper behaviour
-  are checked in Stage 4.
+- Kiwix publishes only an **MD5** for kiwix-tools builds (no SHA-256 or metalink; checked
+  2026-11-23). The project checks it, then records its own SHA-256 for later copies.
+- Run on 2026-11-23 (with the user's approval): `--version` prints "kiwix-tools 3.8.2,
+  libkiwix 14.2.0, libzim 9.5.0". The binaries are ad-hoc signed and, fetched with `curl`,
+  carry no quarantine attribute, so Gatekeeper doesn't block them.
+- The Linux glibc builds `linux-x86_64` and `linux-aarch64` 3.8.2 are **statically linked**
+  (`file` output; not run). They need kernel 3.2+ or 5.4+, which Ubuntu 24.04's 6.8 meets.
+- Installed at `~/.local/opt/kiwix-tools-3.8.2/`, with symlinks in `~/.local/bin/` (the
+  user's choice, 2026-11-23).
 
 ### Older releases
 
@@ -164,14 +189,29 @@ copies are the only history.
 | What | Where | Drive |
 |---|---|---|
 | Archive: all kept versions (`zim/`), `partial/` downloads, `manifest.json`, logs | `DATA_DIR` = `/Volumes/Starfish_Prime/kiwix-data/` | HDD |
-| Hot copy: the newest version only, plus a `.sha256` file written after it's verified | `HOT_DIR` = `/Volumes/BackUp_T7/kiwix-hot/` (outside Dropbox) | SSD |
+| Hot copy: the newest version only, plus a `.sha256` file written after it's verified | `HOT_DIR` = `/Volumes/BackUp_T7/wikipedia-storage/` (outside Dropbox) | SSD |
+| kiwix-tools backups (`software/kiwix-tools/*.tar.gz` + `.sha256`) | in both `DATA_DIR` and `HOT_DIR` | HDD + SSD |
 | `library.xml` (generated) | `STATE_DIR` = `~/.local/state/wikibackup/` | internal disk |
-| Code, config, docs | this repo, inside Dropbox on the T7 | SSD |
+| kiwix-tools, installed | `~/.local/opt/kiwix-tools-<version>/`, symlinks in `~/.local/bin/` | internal disk |
+| serve log | `~/Library/Logs/wikibackup/serve.log` | internal disk |
+| Code, config, docs, `.venv` | this repo, inside Dropbox on the T7 | SSD |
 
 The archive is the source of truth: `manifest.json` records every kept version's release
 date, size and SHA-256. The hot copy is a cache of the newest version that has been
-checked against the manifest. `library.xml` lives on the internal disk so serving works
-when either external drive is missing.
+checked against the manifest. `library.xml` lives on the internal disk so it's always
+writable.
+
+**Correction (Stage 4):** an earlier draft said this lets serving work when *either*
+external drive is missing. That holds for the HDD. It doesn't for the T7, because the code
+and its `.venv` live on the T7, so after a restart without the T7, `serve` can't start.
+Whether an already-running `serve` survives the T7 being unplugged hasn't been tested.
+
+**HOT_DIR needs creating by hand:** the user's account can't create folders at the top
+of the T7. `/Volumes/BackUp_T7` is owned by `root:wheel`, mode `rwxrwxr-x`, and the user
+isn't in `wheel` (found on 2026-11-23). The user created
+`/Volumes/BackUp_T7/wikipedia-storage` (owned by them) on 2026-11-23, and it's the
+`HOT_DIR` default. If the folder is missing, hot copies are skipped with a warning, and
+`status` says why.
 
 ### Commands
 
@@ -189,31 +229,44 @@ when either external drive is missing.
      monthly run therefore also repairs a missing hot copy, e.g. after the T7 was unplugged
      during an update. Before copying, check that free space is at least the file size plus
      a margin; if not, log it and skip.
-  6. Rebuild `library.xml`, then run Retain.
+  6. Run Retain, then rebuild `library.xml`.
 - **Retain** (`wikibackup prune`, also run at the end of each update):
   - **HDD:** keep the newest `keep_versions` (3).
   - **SSD:** keep only the newest version.
   - Never delete anything until its replacement is verified and `library.xml` has been
     rebuilt without the file to be deleted.
-- **Build the library** (internal step used by `update`, `prune` and `serve`): write
-  `library.xml` from whatever is available right now, using `kiwix-manage add` into a
-  temporary file and then renaming it over the old one. The newest version comes from the
-  hot copy if `HOT_DIR` is mounted and the copy's size matches the manifest, otherwise from
-  the HDD. Older versions come from the HDD if it's mounted. This step doesn't re-hash
-  119 GiB: the SHA-256 is checked once, when the copy is made.
-- **Serve:** a launchd agent with `KeepAlive` runs `wikibackup serve`. It builds the library,
-  then `exec`s
-  `kiwix-serve --library --monitorLibrary --address <BIND_ADDRESS> --port <PORT> <STATE_DIR>/library.xml`.
-  - **Neither drive mounted:** if neither drive holds any version, it exits cleanly, and
-    launchd's restart throttle keeps it from spinning.
-  - **Known gap:** plugging in or unplugging a drive while the server is running isn't
-    noticed until the next restart. Stage 4 decides whether to handle this, e.g. with a
-    launchd `StartOnMount` job that rebuilds the library.
+- **Build the library** (`server.build_library`, used by `update`, `prune` and `serve`):
+  write `library.xml` listing **only the newest version** of each book, using
+  `kiwix-manage add` into a temporary file and then renaming it over the old one. Which
+  copy is used:
+  1. the hot copy, if it's current
+  2. otherwise the HDD copy
+  3. if the HDD isn't mounted, the newest hot-copy file that has a `.sha256`
+  4. otherwise nothing, which gives an empty library
+
+  This step doesn't re-hash 119 GiB: the SHA-256 is checked once, when the copy is made.
+- **Serve:** a launchd agent (`com.local.wikibackup-serve`, `KeepAlive`, at most one
+  restart a minute) runs `.venv/bin/wikibackup serve`. It builds the library and starts
+  `kiwix-serve --library --monitorLibrary --nodatealiases --address <BIND_ADDRESS> --port <PORT> <STATE_DIR>/library.xml`
+  as a child process.
+  - Every 60 s it works out the served files again, and rebuilds the library if they've
+    changed: a drive plugged in or unplugged, a new hot copy. This covers the HTTP 500
+    case above with no extra launchd jobs.
+  - With nothing to serve, kiwix-serve runs with an empty library until a version
+    appears.
+  - SIGTERM is passed on to kiwix-serve. If kiwix-serve exits, `serve` exits with the same
+    status, and launchd restarts it.
+- **Install** (`install.sh`, which runs `wikibackup install-tools`): `uv sync`; back up
+  the kiwix-tools builds; unpack the macOS one into `~/.local/opt`; fill in the plist
+  template and load the agent. `uninstall.sh` unloads the agent and removes the plist,
+  leaving tools and data in place.
 - **Status** (`wikibackup status`) shows:
   - the versions in the archive, with age and size
   - whether the hot copy is present and current
   - which drives are mounted, with disk use and free space on each
-  - whether the server answers on the LAN address as well as on `localhost`
+  - what `library.xml` serves and whether those files exist; HTTP answers on `127.0.0.1`
+    and the LAN address; the `.local` name; the firewall state; whether kiwix-tools is
+    installed
 - **Config:** `config.toml` (committed) holds policy and which books to track. `.env` (not
   committed) holds machine paths (`DATA_DIR`, `HOT_DIR`, `STATE_DIR`) and the port. If
   `HOT_DIR` is empty, the hot copy is turned off and everything is served from the HDD.
@@ -224,6 +277,8 @@ when either external drive is missing.
   SHA-256 when written. Losing either drive loses no data for that version.
 - Older versions exist only on the HDD. Kiwix's server doesn't keep old releases (see
   "Older releases"), so if the HDD fails, the older versions are lost for good.
+- kiwix-tools builds are on both drives (every version ever configured is kept), so the
+  software to read the ZIMs survives the loss of either drive, and of Kiwix's site.
 - Both drives are attached to the same Mac. A single event (theft, a power surge, a spilled
   drink) could take out both. This is not an off-site backup.
 - Nothing re-checks the copies after they're written; there's no periodic scrub. A later
@@ -303,10 +358,10 @@ Each stage ends with a summary and a pause for the user's review. The user makes
     - A file in `zim/` that the manifest doesn't list is adopted if its hash matches
       (crash recovery), and otherwise left alone, except when it has the exact name of the
       release being downloaded and the wrong hash.
-    - `rebuild_library` is a no-op until Stage 4.
+    - `rebuild_library` is a no-op until Stage 4. (It's implemented in Stage 4.)
 
 ### 4. Serving
-- **Goal:** the kept versions are browsable from another LAN device.
+- **Goal:** the newest version is browsable from another LAN device.
 - **Steps:**
   - install the official kiwix-tools arm64 build (the user approves running it)
   - check `--version` and `--help`
@@ -324,6 +379,25 @@ Each stage ends with a summary and a pause for the user's review. The user makes
   - `status` shows the server is up on the LAN address
   - the user opens it from another device
 - **Rollback:** `uninstall.sh` (unloads the agent and removes the plist).
+- **Done (2026-11-23), awaiting the user's checks:** 110 tests pass.
+  - The real kiwix-serve and kiwix-manage experiments are recorded under "How the parts
+    work".
+  - `wikibackup install-tools` ran for real. It archived all 3 builds on the HDD (MD5s
+    match) and installed the macOS build in `~/.local/opt/kiwix-tools-3.8.2/`. Hot copies of
+    the builds were skipped at first, because the first `HOT_DIR`
+    (`/Volumes/BackUp_T7/kiwix-hot`) couldn't be created. After the user created
+    `wikipedia-storage` and it became `HOT_DIR`, they were made there.
+  - The real `wikibackup serve` ran with the 3.4 MB test ZIM, on port 8080, on all
+    interfaces. `status` reported HTTP 200 on `127.0.0.1` and on `192.168.0.50`, and
+    `/content/openzim_en_all_maxi/` served the book.
+  - The macOS application firewall is **off** on this Mac.
+  - The user opened the test server from another machine on the LAN, and it worked
+    (2026-11-23). On SIGTERM, `serve` stopped kiwix-serve cleanly (status 0).
+  - **Not done yet:**
+    - running `install.sh`, which loads the launchd agent; with the archive empty, it will
+      serve an empty library until Stage 5's download
+  - Changes from the earlier plan (user, 2026-11-23): only the newest version is served;
+    `-z` is used; kiwix-tools builds are backed up.
 
 ### 5. Scheduling + first full download
 - **Goal:** the monthly job is installed, and the first maxi version (118.7 GiB) is in the
@@ -337,8 +411,7 @@ Each stage ends with a summary and a pause for the user's review. The user makes
 
 #### Browsing benchmark (HDD vs SSD)
 
-Measures how much the hot copy helps, and how slow the older, HDD-only versions and the HDD
-fallback are. It doesn't decide whether the hot copy exists; that was decided on
+Measures how much the hot copy helps, and how slow the HDD fallback is. It doesn't decide whether the hot copy exists; that was decided on
 2026-11-23. It runs on the real maxi version, because ZIM size affects how much of the
 index the page cache can hold. Stage 5 is the first time the same large ZIM is on both
 drives.
@@ -382,17 +455,20 @@ drives.
   `maxi` entry rather than doing nothing silently.
 - **Firewall and binary trust.** The macOS application firewall may block incoming
   connections to an unsigned `kiwix-serve`. Stage 4 checks this.
-- **HDD browsing speed.** These are estimates, not yet measured. An HDD random read takes
-  about 10 ms, against about 0.1 ms on an SSD. A cold article needs a handful of reads (tens
-  of ms). An image-heavy page needs one more lookup and read per image (possibly over 1 s
-  cold), and full-text search does many scattered reads. The biggest delay is likely
-  spin-up: several seconds on the first request after the drive has gone idle. macOS's page
-  cache hides much of this once browsing warms up. The SSD hot copy avoids this for the
-  newest version; the older versions and the HDD fallback still pay it. The Stage 5
-  benchmark measures it.
+- **HDD browsing speed** (only when the HDD copy is served as a fallback). These are
+  estimates, not yet measured. An HDD random read takes about 10 ms, against about 0.1 ms on
+  an SSD. A cold article needs a handful of reads (tens of ms). An image-heavy page needs
+  one more lookup and read per image (possibly over 1 s cold), and full-text search does
+  many scattered reads. The biggest delay is likely spin-up: several seconds on the first
+  request after the drive has gone idle. macOS's page cache hides much of this once browsing
+  warms up. The SSD hot copy avoids this for the newest version; only the HDD fallback still
+  pays it. The Stage 5 benchmark measures it.
 - **The hot copy shares the T7 with Dropbox and other backups.** The copy step checks free
-  space first and skips with a log message rather than filling the drive. If the T7 is
-  often unplugged, the newest version is served more slowly, from the HDD, until it's back.
+  space first and skips with a log message rather than filling the drive.
+- **Serving depends on the T7.** The code lives on the T7, so with the T7 unplugged the
+  server can't (re)start, even though the HDD has a copy (see the correction under "Where
+  things live"). Moving the code or a copy of it to the internal disk would remove this
+  dependency. That isn't planned.
 - **Drive attached elsewhere.** Starfish_Prime may sometimes be attached to the router (it
   has a `.TPDLNA` folder). Every command checks which of `DATA_DIR` and `HOT_DIR` are
   mounted before using them.
@@ -416,15 +492,12 @@ From the 2026-11-23 design session, not re-checked in Stage 1:
 
 ## Open questions
 
-1. **A stable "latest" link.** kiwix-serve's docs describe no "default book" option; its
-   home page lists every book in the library. Undated aliases (`-z`) conflict when 3
-   versions are kept. Options: accept the home page as it is, or use `--customIndex` with a
-   generated page that links to the newest version first. Decide in Stage 4.
-2. **Where to install kiwix-tools.** Not inside Dropbox. `~/.local/opt/kiwix-tools-<version>/`
-   with a `~/.local/bin` symlink is the proposal. Decide in Stage 4.
+None at the moment. Questions decided so far:
 
-The SSD hot copy, open question 3 in an earlier draft, was adopted on 2026-11-23. See
-Design.
+- **SSD hot copy:** adopted 2026-11-23.
+- **A stable "latest" link:** resolved 2026-11-23 by serving only the newest version and
+  using `-z`.
+- **Where to install kiwix-tools:** `~/.local/opt` plus symlinks, decided 2026-11-23.
 
 ## Reproducing
 

@@ -34,11 +34,19 @@ to the home LAN by `kiwix-serve` under launchd. Design and stages:
   redirects there).
 - Take the exact size and SHA-256 from the `.zim.meta4` metalink. The catalog's `length` is
   approximate.
-- Downloads redirect to a different mirror on each request. Re-resolve the URL on every
-  resume and check `Content-Range`.
-- kiwix-tools isn't on Homebrew. Use the official macOS arm64 tarball from
-  `download.kiwix.org/release/kiwix-tools/`. Running it needs the user's approval.
-- Don't use kiwix-serve's `-z/--nodatealiases`. It creates undated aliases, which conflict
-  when 3 versions are kept.
+- Kiwix's redirector may pick a different mirror on each request, so downloads go
+  straight to the metalink's mirrors in priority order, and every resume checks
+  `Content-Range`.
+- kiwix-tools isn't on Homebrew. `wikibackup install-tools` (run by `install.sh`)
+  installs the official build into `~/.local/opt/kiwix-tools-<version>/`. Kiwix publishes
+  only MD5s for these builds.
+- Only the newest version of each book is served, so `-z/--nodatealiases` is safe and is
+  used: it gives stable undated URLs.
+- kiwix-manage writes ZIM paths relative to `library.xml`'s folder, so don't move
+  `library.xml`.
+- Tests use fake kiwix-tools (`tests/conftest.py`, autouse). Don't let a test touch the
+  real `~/.local` or the network.
+- The server is the launchd agent `com.local.wikibackup-serve`; its log is in
+  `~/Library/Logs/wikibackup/serve.log`.
 - The user's global rules apply: the user makes all commits; after each stage, pause for
   review.

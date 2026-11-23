@@ -1,6 +1,5 @@
-# Which ZIMs to track and the update/retention policy (committed).
-# Machine-specific paths and the port are in .env instead.
-# Nothing reads this file yet: config.py arrives in Stage 2.
+# Which ZIMs and kiwix-tools builds to keep, and the update/retention policy (committed).
+# Read by src/wikibackup/config.py. Machine-specific paths and the port are in .env instead.
 
 [policy]
 min_age_months = 6   # don't replace a local copy younger than this
@@ -9,3 +8,10 @@ keep_versions = 3    # per tracked ZIM; older versions are pruned after a verifi
 [[zim]]
 name = "wikipedia_en_all"   # the catalog's <name> (not "wikipedia_en_all_maxi")
 flavour = "maxi"            # the catalog's <flavour>; files are <name>_<flavour>_<YYYY-MM>.zim
+
+# kiwix-tools builds to keep in the archive (and the hot copy), checked against Kiwix's MD5.
+# macos-arm64 is the one installed on this Mac. The Linux builds (statically linked) are
+# kept for a possible move to Ubuntu 24.04. Change `version` to move to a new release.
+[kiwix_tools]
+version = "3.8.2"
+platforms = ["macos-arm64", "linux-x86_64", "linux-aarch64"]

@@ -243,6 +243,20 @@ def hot_copy_state(
     return HotCopyState(path.name, True, "")
 
 
+def has_sha256_file(path: Path) -> bool:
+    """True if ``path`` is a file with a non-empty ``<path>.sha256`` next to it.
+
+    The project writes that file only after checking a copy's hash, so its presence means
+    "verified when written". This doesn't re-hash. Used for ZIM hot copies (``server``) and
+    kiwix-tools backups (``software``).
+    """
+    sidecar = path.with_name(path.name + SHA256_SUFFIX)
+    try:
+        return path.is_file() and bool(sidecar.read_text().split())
+    except OSError:
+        return False
+
+
 def months_old(version: str, today: date) -> int:
     """Whole calendar months from a ``YYYY-MM`` version tag to ``today``.
 

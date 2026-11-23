@@ -1,4 +1,20 @@
-"""Shared pytest fixtures: a local HTTP file server for download tests.
+"""Shared pytest fixtures: fake kiwix-tools (used by every test) and a local HTTP file
+server (for download tests).
+
+**fake_kiwix_tools** (autouse) points ``software.OPT_DIR`` and ``software.BIN_DIR`` at
+temporary folders, and puts small Python stand-ins for ``kiwix-manage`` and
+``kiwix-serve`` where the configured version (3.8.2) is expected. So no test reads or
+changes the real ``~/.local``. The stand-ins:
+
+- ``kiwix-manage LIB add ZIM...``: writes a library XML with one ``<book path="...">``
+  per ZIM (absolute paths), or prints an error and exits 1 if a ZIM doesn't exist.
+- ``kiwix-serve ...``: writes its arguments, one per line, to ``serve-args.txt`` next to
+  itself, then waits. It exits 0 on SIGTERM, or with status 3 when a file named ``stop``
+  appears next to it (so tests can end ``run_serve`` without sending signals).
+
+It also replaces ``software._fetch`` with one that raises ``SoftwareError``, so
+``update``'s kiwix-tools backup step never contacts download.kiwix.org. Tests of that
+step replace it again.
 
 ``file_server`` runs a ``ThreadingHTTPServer`` on ``127.0.0.1`` (a random free port) for
 one test. Tests register content with ``server.add(path, data, mode)``, where ``mode``
@@ -15,10 +31,62 @@ request, so tests can check what was asked for. Used by ``test_download.py`` and
 ``test_update.py``; nothing leaves the machine.
 """
 
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
+
+from wikibackup import software
+
+FAKE_MANAGE = """\
+import sys, os
+lib, action, *zims = sys.argv[1:]
+assert action == "add"
+for z in zims:
+    if not os.path.isfile(z):
+        print(f"Cannot add ZIM {z} to the library.", file=sys.stderr)
+        sys.exit(1)
+books = "".join(f'  <book id="x{i}" path="{os.path.abspath(z)}" />\\n' for i, z in enumerate(zims))
+with open(lib, "w") as f:
+    f.write(f'<library version="20110515">\\n{books}</library>\\n')
+"""
+
+FAKE_SERVE = """\
+import os, signal, sys, time
+here = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(here, "serve-args.txt"), "w") as f:
+    f.write("\\n".join(sys.argv[1:]))
+signal.signal(signal.SIGTERM, lambda *a: sys.exit(0))
+while not os.path.exists(os.path.join(here, "stop")):
+    time.sleep(0.05)
+sys.exit(3)
+"""
+
+
+def write_tool(path: Path, body: str) -> None:
+    """Write an executable Python script that runs with this test's interpreter."""
+    path.write_text(f"#!{sys.executable}\n{body}")
+    path.chmod(0o755)
+
+
+@pytest.fixture(autouse=True)
+def fake_kiwix_tools(tmp_path_factory, monkeypatch) -> Path:
+    """Install fake kiwix-tools 3.8.2 in a temporary OPT_DIR; return its folder."""
+    root = tmp_path_factory.mktemp("local")
+    monkeypatch.setattr(software, "OPT_DIR", root / "opt")
+    monkeypatch.setattr(software, "BIN_DIR", root / "bin")
+    tools = software.install_dir("3.8.2")
+    tools.mkdir(parents=True)
+    write_tool(tools / "kiwix-manage", FAKE_MANAGE)
+    write_tool(tools / "kiwix-serve", FAKE_SERVE)
+
+    def no_network(url):
+        raise software.SoftwareError(f"network disabled in tests: {url}")
+
+    monkeypatch.setattr(software, "_fetch", no_network)
+    return tools
 
 
 class FileServer:

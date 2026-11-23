@@ -1,8 +1,8 @@
 """Smoke tests: the package imports and the CLI's subcommands parse.
 
-The stub subcommand (``serve``) must exit with the "not implemented" status until Stage 4
-replaces it. ``check`` and ``status`` are covered in ``test_cli.py``, and ``update`` and
-``prune`` in ``test_update.py``.
+Each subcommand's behaviour is tested elsewhere: ``check`` and ``status`` in
+``test_cli.py``, ``update`` and ``prune`` in ``test_update.py``, ``serve`` in
+``test_server.py``, ``install-tools`` in ``test_software.py``.
 """
 
 import pytest
@@ -10,19 +10,9 @@ import pytest
 import wikibackup
 from wikibackup import cli
 
-STUBS = ["serve"]
-
-
 def test_package_imports():
     """The package imports and has a module docstring."""
     assert wikibackup.__doc__
-
-
-@pytest.mark.parametrize("command", STUBS)
-def test_stub_subcommands_report_not_implemented(command, capsys):
-    """Each stub subcommand is accepted and exits with the stub status."""
-    assert cli.main([command]) == cli.EXIT_NOT_IMPLEMENTED
-    assert "not implemented yet" in capsys.readouterr().err
 
 
 def test_every_subcommand_is_in_help():

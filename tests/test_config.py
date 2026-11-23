@@ -19,6 +19,10 @@ keep_versions = 3
 [[zim]]
 name = "wikipedia_en_all"
 flavour = "maxi"
+
+[kiwix_tools]
+version = "3.8.2"
+platforms = ["macos-arm64", "linux-x86_64"]
 """
 
 
@@ -50,6 +54,8 @@ def test_defaults_when_no_env_file(tmp_path):
     assert config.policy.min_age_months == 6
     assert config.policy.keep_versions == 3
     assert [(z.name, z.flavour) for z in config.zims] == [("wikipedia_en_all", "maxi")]
+    assert config.kiwix_tools.version == "3.8.2"
+    assert config.kiwix_tools.platforms == ("macos-arm64", "linux-x86_64")
     assert config.data_dir == Path(ENV_DEFAULTS["DATA_DIR"])
     assert config.hot_dir == Path(ENV_DEFAULTS["HOT_DIR"])
     assert config.state_dir == Path.home() / ".local/state/wikibackup"
@@ -86,6 +92,7 @@ def test_missing_config_file(tmp_path):
         "[policy]\nmin_age_months=6\nkeep_versions=3\n",  # no [[zim]]
         "[policy]\nmin_age_months=6\nkeep_versions=0\n[[zim]]\nname='a'\nflavour='b'\n",
         "[policy]\nmin_age_months=6\nkeep_versions=3\n[[zim]]\nname='a'\n",  # no flavour
+        "[policy]\nmin_age_months=6\nkeep_versions=3\n[[zim]]\nname='a'\nflavour='b'\n",  # no [kiwix_tools]
     ],
 )
 def test_invalid_config_toml(tmp_path, toml):
