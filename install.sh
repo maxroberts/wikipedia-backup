@@ -48,10 +48,11 @@ if launchctl print "gui/$(id -u)/${LABEL}" >/dev/null 2>&1; then
     echo "==> Unloading existing agent"
     launchctl bootout "gui/$(id -u)/${LABEL}" 2>/dev/null || true
 fi
+# bootstrap starts the agent at once (RunAtLoad), so no kickstart is needed. enable clears
+# any "disabled" override left by an earlier `launchctl disable`.
 echo "==> Loading agent"
 launchctl bootstrap "gui/$(id -u)" "${PLIST_DEST}"
 launchctl enable "gui/$(id -u)/${LABEL}" 2>/dev/null || true
-launchctl kickstart -k "gui/$(id -u)/${LABEL}" 2>/dev/null || true
 
 # 5. Firewall note
 if /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate | grep -q enabled; then
