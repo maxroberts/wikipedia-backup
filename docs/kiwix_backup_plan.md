@@ -1,6 +1,6 @@
 # Plan: offline English Wikipedia on this Mac with Kiwix
 
-**Status:** adopted, Stage 2 done (awaiting review) · **Date:** 2026-11-23 · **Scope:** downloading,
+**Status:** adopted, Stage 3 done (awaiting review) · **Date:** 2026-11-23 · **Scope:** downloading,
 keeping and serving English Wikipedia (maxi) ZIM files on this MacBook Air, for the home LAN
 
 ## TL;DR
@@ -284,6 +284,26 @@ Each stage ends with a summary and a pause for the user's review. The user makes
   repaired on a later run. Then an end-to-end run with a small real ZIM (a few MB) into
   scratch `DATA_DIR` and `HOT_DIR` folders.
 - **Rollback:** delete the scratch folders.
+- **Done (2026-11-23):** 85 tests pass. End-to-end runs with the real
+  `openzim_en_all_maxi_2026-11.zim` (3,386,170 bytes) into scratch folders on the internal
+  disk:
+  - The first `update` downloaded it from `wi.mirror.driftle.ss` (the metalink's
+    first-priority mirror for this book), verified it, installed it and made the hot copy.
+  - A second `update` logged "up to date" and downloaded nothing.
+  - macOS's `shasum -a 256` of both copies matched Kiwix's separate `.sha256` file.
+  - A run starting from a 1 MiB `.part` resumed ("1048576 already present") and produced a
+    file identical to the full download.
+  - Not yet exercised on the real drives: the `/Volumes` mount checks with scratch folders
+    on Starfish_Prime and the T7. Stage 5's first real run will be the first.
+  - Choices made in this stage (all documented in `update.py`):
+    - Downloads go to the metalink's mirrors in priority order, then the redirector.
+    - A `flock` lock in `DATA_DIR` keeps two runs from overlapping.
+    - A free-space margin of 5 GiB.
+    - An unmounted archive is "nothing to do" (exit 0), not an error.
+    - A file in `zim/` that the manifest doesn't list is adopted if its hash matches
+      (crash recovery), and otherwise left alone, except when it has the exact name of the
+      release being downloaded and the wrong hash.
+    - `rebuild_library` is a no-op until Stage 4.
 
 ### 4. Serving
 - **Goal:** the kept versions are browsable from another LAN device.
@@ -353,7 +373,10 @@ drives.
   about 14 hours. These are projections, not measured, and the Mac may sleep in between.
   Resume makes interruptions cheap, but a sleeping Mac pauses the download.
 - **Different mirror on each request.** One mirror might serve a different or stale file.
-  The final SHA-256 check catches this; the cost is re-downloading.
+  The final SHA-256 check catches this; the cost is re-downloading. Since Stage 3, each
+  attempt goes straight to a mirror from the metalink, so a download only changes mirror
+  after a failure. Mixing bytes from two mirrors is still possible, and still caught by the
+  hash.
 - **Catalog format changes.** The catalog already moved hosts and doesn't use the name the
   design session expected. Tests use saved responses, and `check` fails loudly if it finds no
   `maxi` entry rather than doing nothing silently.

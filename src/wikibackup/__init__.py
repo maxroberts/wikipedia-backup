@@ -12,13 +12,17 @@ Modules, in dependency order:
 - ``catalog``: fetches and parses Kiwix's OPDS catalog (newest release of each book) and
   each release's ``.meta4`` metalink (exact size, SHA-256, mirrors). Network, no disk
   writes.
-- ``library``: reads the archive's ``manifest.json``, lists archived versions and the hot
-  copy, checks whether a drive is mounted, and applies the update rule
-  (``decide_update``). Read-only.
-- ``cli``: the ``wikibackup`` command. ``check`` and ``status`` work (Stage 2);
-  ``update``, ``prune`` and ``serve`` are stubs that exit with status 2.
+- ``download``: resumable HTTP download across mirrors, SHA-256 hashing, and the verified
+  copy used for the hot copy. Knows nothing about the manifest or the policy.
+- ``library``: reads and atomically writes the archive's ``manifest.json``, lists archived
+  versions and the hot copy, checks whether a drive is mounted, and applies the update
+  rule (``decide_update``).
+- ``update``: the ``update`` and ``prune`` commands. It decides the order of downloading,
+  verifying, installing, hot-copying and pruning, under a lock, and never deletes a
+  version before its replacement is verified.
+- ``cli``: the ``wikibackup`` command. ``check``, ``status``, ``update`` and ``prune``
+  work; ``serve`` is a stub that exits with status 2 (Stage 4).
 
-Planned (not written yet): ``download`` (resumable download, SHA-256 check, hot copy;
-Stage 3) and ``server`` (kiwix-serve command line, ``library.xml``, health check;
-Stage 4).
+Planned (not written yet): ``server`` (kiwix-serve command line, ``library.xml`` via
+kiwix-manage, health check; Stage 4). Until then, ``update.rebuild_library`` is a no-op.
 """

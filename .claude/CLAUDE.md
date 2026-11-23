@@ -9,6 +9,9 @@ to the home LAN by `kiwix-serve` under launchd. Design and stages:
 - `uv sync --dev`: install
 - `uv run pytest`: tests
 - `uv run wikibackup <check|status|update|prune|serve>`: the CLI
+- Real end-to-end test without the 119 GiB download: a scratch `config.toml` tracking
+  `openzim_en_all` / `maxi` (3.4 MB), plus `DATA_DIR` and `HOT_DIR` pointing at scratch
+  folders: `uv run wikibackup --config <scratch>/config.toml update`
 
 ## Things that are easy to get wrong
 

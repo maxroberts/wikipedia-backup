@@ -12,32 +12,52 @@ Subcommands, and the stage that implements each (see ``docs/kiwix_backup_plan.md
   drive is mounted, whether the folder exists, and free space. For each tracked book, list
   the archive's versions and the hot copy's state. Read-only; no network. Server health is
   added in Stage 4.
-- ``update`` (Stage 3): download, verify and install a new release if policy allows.
-- ``prune`` (Stage 3): delete versions beyond ``keep_versions``.
-- ``serve`` (Stage 4): run kiwix-serve in the foreground for launchd.
+- ``update`` (Stage 3): for each book, download a new release if the policy allows,
+  verify it, make sure the hot copy is current, and prune (``update.run_update``).
+- ``prune`` (Stage 3): make sure the hot copy is current and prune, with no network access
+  (``update.run_prune``).
+- ``serve`` (Stage 4): run kiwix-serve in the foreground for launchd. Still a stub that
+  prints "not implemented yet" and exits with status 2.
 
-``update``, ``prune`` and ``serve`` are stubs: each prints that it isn't implemented yet
-and exits with status 2.
+``update`` and ``prune`` log progress (timestamped) to stderr and append the same lines to
+``DATA_DIR/logs/wikibackup.log``. If the archive drive isn't mounted, they log a warning
+and exit 0 without doing anything, so the monthly launchd job doesn't report a failure
+while the drive is attached elsewhere. ``check`` and ``status`` print plain reports to
+stdout.
 
-Exit statuses: 0 success; 1 an error (bad config, unreadable manifest, catalog or network
-failure), reported as one line on stderr; 2 a usage error or a stub subcommand.
+The global option ``--config PATH`` reads a different ``config.toml`` (the default is
+the one in the repo root). The end-to-end test uses it with a small book.
+
+Exit statuses: 0 success (or nothing to do); 1 an error such as a bad config, an
+unreadable manifest, a catalog, network or checksum failure, too little free space, or
+another run holding the lock, reported on stderr; 2 a usage error or a stub subcommand.
 """
 
 import argparse
+import logging
 import sys
 from datetime import date
 from pathlib import Path
 
-from wikibackup import library
+from wikibackup import download, library, update
 from wikibackup.catalog import CatalogError, fetch_metalink, latest_release
 from wikibackup.config import Config, ConfigError, load_config
+
+log = logging.getLogger("wikibackup")
+
+# Errors reported as "error: <message>" with exit status 1.
+EXPECTED_ERRORS = (
+    ConfigError, CatalogError, library.ManifestError, download.DownloadError,
+    download.VerifyError, update.SpaceError, update.LockedError,
+)
+LOG_FORMAT = "%(asctime)s %(levelname)s %(message)s"
 
 # Subcommand name -> one-line help text. The order sets the order in --help.
 SUBCOMMANDS = {
     "check": "Show the newest catalog release and whether update would download it.",
     "status": "Show installed versions, the hot copy and disk space.",
     "update": "Download, verify and install a new release if policy allows.",
-    "prune": "Delete versions beyond keep_versions.",
+    "prune": "Bring the hot copy up to date and delete versions beyond keep_versions.",
     "serve": "Run kiwix-serve in the foreground (used by launchd).",
 }
 
@@ -63,6 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="wikibackup",
         description="Keep an offline, LAN-served copy of English Wikipedia (Kiwix ZIM).",
+    )
+    parser.add_argument(
+        "--config", type=Path, default=None, metavar="PATH",
+        help="config.toml to use (default: the one in the repo root)",
     )
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     for name, help_text in SUBCOMMANDS.items():
@@ -146,20 +170,66 @@ def run_status(config: Config, today: date) -> int:
     return EXIT_OK
 
 
+def setup_logging(config: Config) -> None:
+    """Send the ``wikibackup`` loggers' messages at ``LOG_LEVEL`` and above to stderr and
+    to ``DATA_DIR/logs/wikibackup.log`` (appending). Used by ``update`` and ``prune`` only;
+    the caller has created ``logs/``. Replaces handlers from an earlier call, so tests can
+    call ``main`` repeatedly."""
+    logger = logging.getLogger("wikibackup")
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+        handler.close()
+    logger.setLevel(config.log_level.upper())
+    logger.propagate = False
+    formatter = logging.Formatter(LOG_FORMAT)
+    log_file = config.data_dir / update.LOG_SUBDIR / "wikibackup.log"
+    for handler in (logging.StreamHandler(sys.stderr), logging.FileHandler(log_file)):
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+
+
+def run_writer(command: str, config: Config, today: date) -> int:
+    """Run ``update`` or ``prune``: check the archive drive, prepare the folders, set up
+    logging, and call ``update.run_update`` or ``update.run_prune``."""
+    if not library.is_available(config.data_dir):
+        print(
+            f"wikibackup {command}: archive drive not mounted ({config.data_dir}); nothing to do",
+            file=sys.stderr,
+        )
+        return EXIT_OK
+    update.prepare_archive(config.data_dir)
+    setup_logging(config)
+    log.info("wikibackup %s: start", command)
+    try:
+        if command == "update":
+            update.run_update(config, today)
+        else:
+            update.run_prune(config)
+    except EXPECTED_ERRORS as exc:
+        log.error("wikibackup %s: %s", command, exc)
+        return EXIT_ERROR
+    log.info("wikibackup %s: done", command)
+    return EXIT_OK
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse ``argv`` (default: ``sys.argv[1:]``) and run the chosen subcommand.
 
-    Returns the process exit status (see the module docstring). Config, manifest and
-    catalog errors are caught here and printed as one line on stderr.
+    Returns the process exit status (see the module docstring). Expected errors
+    (``EXPECTED_ERRORS``) are reported on stderr instead of as a traceback.
     """
     args = build_parser().parse_args(argv)
-    handlers = {"check": run_check, "status": run_status}
-    if args.command not in handlers:
+    if args.command == "serve":
         print(f"wikibackup {args.command}: not implemented yet", file=sys.stderr)
         return EXIT_NOT_IMPLEMENTED
     try:
-        return handlers[args.command](load_config(), date.today())
-    except (ConfigError, CatalogError, library.ManifestError) as exc:
+        config = load_config(args.config)
+        if args.command == "check":
+            return run_check(config, date.today())
+        if args.command == "status":
+            return run_status(config, date.today())
+        return run_writer(args.command, config, date.today())
+    except EXPECTED_ERRORS as exc:
         print(f"wikibackup {args.command}: error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 

@@ -1,8 +1,9 @@
 """What's on disk: the archive manifest, archive and hot-copy listings, and the update rule.
 
-``cli status`` and ``cli check`` use this module; from Stage 3, ``update`` and ``prune``
-will too. In Stage 2 everything here is **read-only**: it never creates, writes or deletes
-files or folders.
+``cli status`` and ``cli check`` use the read-only parts of this module; ``update.py``
+(``update`` and ``prune``) uses all of it. The only function that writes is
+``write_manifest``. Deleting files and making copies happen in ``update.py`` and
+``download.py``.
 
 Locations (see "Where things live" in ``docs/kiwix_backup_plan.md``):
 
@@ -11,7 +12,8 @@ Locations (see "Where things live" in ``docs/kiwix_backup_plan.md``):
   ``<file>.zim.sha256`` file, which is written only after the copy's SHA-256 has been
   checked against the manifest.
 
-**Manifest format** (``DATA_DIR/manifest.json``; Stage 3 writes it, this module reads it).
+**Manifest format** (``DATA_DIR/manifest.json``; ``update.py`` changes it through
+``write_manifest``).
 The manifest is the source of truth: a ZIM in ``zim/`` counts as a kept, verified version
 only if the manifest lists it.
 
@@ -35,11 +37,11 @@ from pathlib import Path
 
 from wikibackup.catalog import Release, version_from_file_name
 from wikibackup.config import Policy, ZimSpec
+from wikibackup.download import SHA256_SUFFIX
 
 MANIFEST_NAME = "manifest.json"
 MANIFEST_FORMAT = 1
 ZIM_SUBDIR = "zim"
-SHA256_SUFFIX = ".sha256"
 
 
 class ManifestError(Exception):
@@ -147,6 +149,27 @@ def read_manifest(data_dir: Path) -> list[ManifestEntry]:
         return [ManifestEntry(**item) for item in raw["zims"]]
     except (KeyError, TypeError) as exc:
         raise ManifestError(f"{path}: bad entry: {exc}") from exc
+
+
+def write_manifest(data_dir: Path, entries: list[ManifestEntry]) -> None:
+    """Replace ``data_dir/manifest.json`` with ``entries``, atomically.
+
+    Writes ``manifest.json.tmp``, flushes it to disk (``fsync``), then renames it over the
+    old file, so a crash leaves either the old manifest or the new one, never a partial
+    file. Entries are sorted by file name so the file is stable for diffing.
+    """
+    path = data_dir / MANIFEST_NAME
+    tmp = path.with_name(MANIFEST_NAME + ".tmp")
+    payload = {
+        "format": MANIFEST_FORMAT,
+        "zims": [vars(e) for e in sorted(entries, key=lambda e: e.file)],
+    }
+    with tmp.open("w") as f:
+        json.dump(payload, f, indent=2)
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 
 
 def list_archive(

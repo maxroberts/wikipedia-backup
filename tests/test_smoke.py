@@ -1,8 +1,8 @@
 """Smoke tests: the package imports and the CLI's subcommands parse.
 
-The stub subcommands (``update``, ``prune``, ``serve``) must exit with the "not
-implemented" status until their stage replaces them. ``check`` and ``status`` are covered
-in ``test_cli.py``.
+The stub subcommand (``serve``) must exit with the "not implemented" status until Stage 4
+replaces it. ``check`` and ``status`` are covered in ``test_cli.py``, and ``update`` and
+``prune`` in ``test_update.py``.
 """
 
 import pytest
@@ -10,7 +10,7 @@ import pytest
 import wikibackup
 from wikibackup import cli
 
-STUBS = ["update", "prune", "serve"]
+STUBS = ["serve"]
 
 
 def test_package_imports():

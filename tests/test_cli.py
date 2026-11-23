@@ -27,7 +27,7 @@ def config(tmp_path, monkeypatch):
         data_dir=tmp_path / "archive", hot_dir=tmp_path / "hot", state_dir=tmp_path / "state",
         bind_address="all", port=8080, log_level="INFO",
     )
-    monkeypatch.setattr(cli, "load_config", lambda: cfg)
+    monkeypatch.setattr(cli, "load_config", lambda path=None: cfg)
     return cfg
 
 
@@ -108,7 +108,7 @@ def test_status_lists_versions_and_current_hot_copy(config, capsys):
 
 
 def test_status_hot_copy_off(config, monkeypatch, capsys):
-    monkeypatch.setattr(cli, "load_config", lambda: dataclasses.replace(config, hot_dir=None))
+    monkeypatch.setattr(cli, "load_config", lambda path=None: dataclasses.replace(config, hot_dir=None))
     assert cli.main(["status"]) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert "hot copy (HOT_DIR): off" in out and "hot copy: off" in out

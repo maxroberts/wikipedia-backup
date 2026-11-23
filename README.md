@@ -3,9 +3,9 @@
 Keep an offline, browsable copy of English Wikipedia on this Mac and serve it to the home
 LAN. It uses Kiwix ZIM files and `kiwix-serve`.
 
-> **Status: Stage 2 of 6.** The read-only `check` and `status` commands work. `update`,
-> `prune` and `serve` are stubs that exit with "not implemented yet", so nothing downloads
-> or serves yet. The plan and its stages are in
+> **Status: Stage 3 of 6.** `check`, `status`, `update` and `prune` work. `serve` is a
+> stub (Stage 4), there's no monthly launchd job yet (Stage 5), and the real 119 GiB
+> download hasn't been run. The plan and its stages are in
 > [docs/kiwix_backup_plan.md](docs/kiwix_backup_plan.md).
 
 ## What it will do
@@ -48,12 +48,26 @@ you delete and recreate it, mark it again: `xattr -w com.dropbox.ignored 1 .venv
 ```sh
 uv run wikibackup check    # newest release in Kiwix's catalog, and whether update would download it
 uv run wikibackup status   # drives, free space, archived versions, the hot copy
+uv run wikibackup update   # download a new release if due, verify it, refresh the hot copy, prune
+uv run wikibackup prune    # refresh the hot copy and prune, with no network access
 ```
 
-Both are read-only: they never create, change or delete files. `check` needs network
-access. Exit status is 0 on success, and 1 on an error (printed as one line on stderr), such
-as a bad config, an unreadable manifest, or a catalog that can't be fetched. If a drive
-isn't mounted, that's reported in the output, not treated as an error.
+- `check` and `status` are read-only. `check` needs network access.
+- `update` and `prune` write only inside `DATA_DIR` and `HOT_DIR`.
+  - They log timestamped progress to stderr and to `DATA_DIR/logs/wikibackup.log`.
+  - If the archive drive isn't mounted, they say so and exit 0 without doing anything.
+  - Only one of them can run at a time (a lock file in `DATA_DIR`).
+  - An interrupted download resumes on the next run.
+  - A file whose SHA-256 doesn't match is deleted, and no older version is pruned.
+- Exit status: 0 on success, 1 on an error (bad config, network or checksum failure, too
+  little free space, another run in progress), 2 for a usage error.
+- `--config PATH`, given before the subcommand, uses a different `config.toml`. Combined
+  with `DATA_DIR` and `HOT_DIR` set in the shell, it's how to test with a small book. For
+  example, with a `config.toml` tracking `openzim_en_all` / `maxi` (3.4 MB):
+
+  ```sh
+  DATA_DIR=/tmp/wb/archive HOT_DIR=/tmp/wb/hot uv run wikibackup --config /tmp/wb/config.toml update
+  ```
 
 ## Configuration
 
@@ -74,25 +88,42 @@ The package is `src/wikibackup/`. Its modules, in the order they depend on each 
   book (name `wikipedia_en_all`, flavour `maxi`). It then fetches that release's `.meta4`
   metalink for the exact size, the SHA-256 and the mirror list. Network only; it never
   writes to disk.
-- `library.py`: reads the archive's `manifest.json`, which is the record of verified
-  versions. It lists the versions in the archive and the state of the hot copy, checks
-  whether a drive under `/Volumes` is mounted, and applies the update rule (download if
-  there's nothing local, or if a newer release exists and the newest local version is at
-  least `min_age_months` old). Read-only.
-- `cli.py`: the `wikibackup` command. `check` uses `catalog`, then `library`; `status`
-  uses `library` only.
+- `download.py`: the byte-moving parts.
+  - A resumable download that tries mirrors in priority order and accepts a reply only if
+    it continues exactly where the partial file ends.
+  - SHA-256 hashing.
+  - The verified copy used for the hot copy: copy, hash, rename, then write a `.sha256`
+    file.
+- `library.py`: reads and atomically writes the archive's `manifest.json`, which is the
+  record of verified versions. It lists the versions in the archive and the state of the
+  hot copy, checks whether a drive under `/Volumes` is mounted, and applies the update
+  rule (download if there's nothing local, or if a newer release exists and the newest
+  local version is at least `min_age_months` old).
+- `update.py`: `update` and `prune`. Under a lock, for each book: decide, download into
+  `partial/`, verify, move into `zim/`, record in the manifest, refresh the hot copy, and
+  prune.
+  - Nothing is deleted until its replacement is verified.
+  - `rebuild_library` (keeping `library.xml` in step before deletions) is a no-op until
+    Stage 4.
+- `cli.py`: the `wikibackup` command and its logging setup.
 
-Flow: `cli` → `config.load_config` → (`catalog` for `check`) → `library` → printed report.
+Flow:
 
-Tests are in `tests/`. They use saved Kiwix responses in `tests/fixtures/` and temporary
-folders, so they never touch the network or the real drives.
+- `check`: `cli` → `config` → `catalog` → `library` → report.
+- `status`: `cli` → `config` → `library` → report.
+- `update` and `prune`: `cli` → `config` → `update`, which uses `catalog`, `download` and
+  `library`.
 
-Planned (see the plan doc): download, verification and the hot-copy step (Stage 3);
-`library.xml`, kiwix-serve and the launchd agents, plus `install.sh` and `uninstall.sh`
-(Stage 4).
+Tests are in `tests/`. They use saved Kiwix responses in `tests/fixtures/`, a local HTTP
+server (`tests/conftest.py`) for downloads, and temporary folders, so they never touch the
+internet or the real drives.
+
+Planned (see the plan doc): `library.xml`, kiwix-serve and the launchd serve agent, plus
+`install.sh` and `uninstall.sh` (Stage 4); the monthly update job (Stage 5).
 
 Data never lives in this repo:
 
-- The archive (all kept ZIMs, the manifest, logs) is in `DATA_DIR` on the HDD.
+- The archive (all kept ZIMs, the manifest, logs, partial downloads) is in `DATA_DIR` on
+  the HDD.
 - The hot copy of the newest ZIM is in `HOT_DIR` on the SSD.
 - `library.xml` is in `STATE_DIR` on the internal disk.
