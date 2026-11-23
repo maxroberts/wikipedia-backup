@@ -1,7 +1,8 @@
 """Smoke tests: the package imports and the CLI's subcommands parse.
 
-These guard the Stage 1 scaffold. Each later stage adds its own test module (catalog,
-download, library, server) with saved responses and no real downloads.
+The stub subcommands (``update``, ``prune``, ``serve``) must exit with the "not
+implemented" status until their stage replaces them. ``check`` and ``status`` are covered
+in ``test_cli.py``.
 """
 
 import pytest
@@ -9,17 +10,26 @@ import pytest
 import wikibackup
 from wikibackup import cli
 
+STUBS = ["update", "prune", "serve"]
+
 
 def test_package_imports():
     """The package imports and has a module docstring."""
     assert wikibackup.__doc__
 
 
-@pytest.mark.parametrize("command", list(cli.SUBCOMMANDS))
-def test_each_subcommand_parses_and_reports_not_implemented(command, capsys):
-    """Every planned subcommand is accepted and, for now, exits with the stub status."""
+@pytest.mark.parametrize("command", STUBS)
+def test_stub_subcommands_report_not_implemented(command, capsys):
+    """Each stub subcommand is accepted and exits with the stub status."""
     assert cli.main([command]) == cli.EXIT_NOT_IMPLEMENTED
     assert "not implemented yet" in capsys.readouterr().err
+
+
+def test_every_subcommand_is_in_help():
+    """Every planned subcommand is registered with the parser."""
+    help_text = cli.build_parser().format_help()
+    for command in cli.SUBCOMMANDS:
+        assert command in help_text
 
 
 def test_no_subcommand_is_an_error():

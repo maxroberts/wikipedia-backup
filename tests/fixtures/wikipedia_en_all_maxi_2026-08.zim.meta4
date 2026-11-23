@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metalink xmlns="urn:ietf:params:xml:ns:metalink">
+  <generator>MirrorBrain/2.19.0</generator>
+  <origin dynamic="true">https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en_all_maxi_2026-08.zim.meta4</origin>
+  <published>2026-11-23T13:41:31Z</published>
+  <publisher>
+    <name>Kiwix project</name>
+    <url>https://kiwix.org</url>
+  </publisher>
+
+  <file name="wikipedia_en_all_maxi_2026-08.zim">
+    <size>127418087648</size>
+
+    <!-- <mtime>1788892713</mtime> -->
+
+    <!-- internal id: 9656 -->
+    <hash type="md5">ad1d4aeda3963a9a5dd6d9b73d6b0126</hash>
+    <hash type="sha-1">819a2fa3f5eb99ecc8a95dedc8643a177882c289</hash>
+    <hash type="sha-256">34162d18b9f96f494eac48a73a309c72e0bc95d85f76be405d0f5de795854aa6</hash>
+    <pieces length="4194304" type="sha-1">
+      <hash>b67cba440a5502b9fb4c816dc6c867a8feb76a49</hash>
+      <hash>177c9f4ba6fa03cf4a1a6e9601a409b897870e6f</hash>
+      <!-- remaining piece hashes removed for the test fixture -->
+    </pieces>
+
+
+    <!-- Found 12 mirrors: 0 in the same network prefix, 0 in the same autonomous system,
+         4 handling this country, 0 in the same region, 3 elsewhere -->
+
+    <!-- Mirrors in the same network (unknown): -->
+
+    <!-- Mirrors in the same AS (unknown): -->
+
+    <!-- Mirrors which handle this country (US): -->
+    <url location="us" priority="1">https://dumps.wikimedia.org/kiwix/zim/wikipedia/wikipedia_en_all_maxi_2026-08.zim</url>
+    <url location="us" priority="2">https://wi.mirror.driftle.ss/kiwix/zim/wikipedia/wikipedia_en_all_maxi_2026-08.zim</url>
+    <url location="us" priority="3">https://ny.mirror.driftle.ss/kiwix/zim/wikipedia/wikipedia_en_all_maxi_2026-08.zim</url>
+    <url location="us" priority="4">https://ftpmirror.your.org/pub/kiwix/zim/wikipedia/wikipedia_en_all_maxi_2026-08.zim</url>
+
+    <!-- Mirrors in the same continent (NA): -->
+
+    <!-- Mirrors in the rest of the world: -->
+    <url location="nl" priority="5">https://ftp.nluug.nl/pub/kiwix/zim/wikipedia/wikipedia_en_all_maxi_2026-08.zim</url>
+    <url location="fr" priority="6">https://mirror.download.kiwix.org/zim/wikipedia/wikipedia_en_all_maxi_2026-08.zim</url>
+    <url location="dk" priority="7">https://mirrors.dotsrc.org/kiwix/zim/wikipedia/wikipedia_en_all_maxi_2026-08.zim</url>
+  </file>
+</metalink>

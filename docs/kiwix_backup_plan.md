@@ -1,6 +1,6 @@
 # Plan: offline English Wikipedia on this Mac with Kiwix
 
-**Status:** adopted, Stage 1 done (awaiting review) · **Date:** 2026-11-23 · **Scope:** downloading,
+**Status:** adopted, Stage 2 done (awaiting review) · **Date:** 2026-11-23 · **Scope:** downloading,
 keeping and serving English Wikipedia (maxi) ZIM files on this MacBook Air, for the home LAN
 
 ## TL;DR
@@ -87,6 +87,11 @@ wasn't checked against a source in this session *(unverified)*.
 - The `.meta4` metalink [3] gives the exact `<size>` and `md5`, `sha-1` and `sha-256`
   hashes, plus SHA-1 hashes of every 4 MiB piece. A plain `<file>.zim.sha256` sidecar
   holds the same SHA-256 [4].
+- The metalink also lists mirror URLs with priorities. The copy fetched on 2026-11-23 said
+  "Found 12 mirrors" and listed 7, starting with `dumps.wikimedia.org` (priority 1). Stage 3
+  can download from one of these directly, staying on a single mirror for the whole
+  download instead of going through the redirector each time. `catalog.parse_metalink`
+  already reads them.
 - The ZIM's URL is the `.meta4` URL without `.meta4`. `download.kiwix.org` redirects (301)
   to `lb.download.kiwix.org`, which redirects (302) to a mirror. In the test it was
   `dumps.wikimedia.org`.
@@ -257,6 +262,15 @@ Each stage ends with a summary and a pause for the user's review. The user makes
 - **Verify:** tests against saved catalog and metalink responses (captured on 2026-11-23);
   one live `check` run.
 - **Rollback:** read-only; nothing to undo.
+- **Done (2026-11-23):** 62 tests pass. On a live run, `check` found
+  `wikipedia_en_all_maxi_2026-08.zim` (118.7 GiB, 7 mirrors) and decided "DOWNLOAD: no
+  verified local copy". `status` reported both drives mounted and none of the three folders
+  created yet, and the run created none of them.
+  - **Manifest format:** set in `library.py`'s module docstring. It's
+    `{"format": 1, "zims": [...]}`, one entry per verified version, with `file`, `name`,
+    `flavour`, `version`, `size`, `sha256` and `added`. Stage 3 writes it.
+  - **Version age:** counted in calendar months from the `YYYY-MM` in the file name, not
+    the catalog's `issued` date. So 2026-08 counts as 6 months old from 2027-02-01.
 
 ### 3. Download + verify + retention
 - **Goal:** `wikibackup update` and `wikibackup prune`.
