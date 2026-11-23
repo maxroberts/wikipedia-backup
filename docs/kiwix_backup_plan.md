@@ -1,6 +1,6 @@
 # Plan: offline English Wikipedia on this Mac with Kiwix
 
-**Status:** adopted, Stage 4 done (awaiting review) · **Date:** 2026-11-23 · **Scope:** downloading,
+**Status:** adopted, Stage 5 in progress (first download running) · **Date:** 2026-11-23 · **Scope:** downloading,
 keeping and serving English Wikipedia (maxi) ZIM files on this MacBook Air, for the home LAN
 
 ## TL;DR
@@ -408,6 +408,21 @@ Each stage ends with a summary and a pause for the user's review. The user makes
   hot copy; kiwix-serve serves the newest version from `HOT_DIR`; the benchmark results are
   recorded in this doc.
 - **Rollback:** unload the agent; delete the partial file and any temporary hot-copy file.
+- **Progress (2026-11-23):**
+  - **Monthly agent:** `launchd/com.local.wikibackup-update.plist.template` runs
+    `caffeinate -i .venv/bin/wikibackup update` on the 1st of each month at 04:00, with no
+    `RunAtLoad`. `install.sh` now installs both agents.
+  - **Bug found and fixed in `install.sh`:** re-installing failed with
+    "Bootstrap failed: 5: Input/output error", because `launchctl bootout` returns before
+    the old process exits. The script now waits until the agent is gone (up to 10 s), and
+    a second re-install ran cleanly.
+  - **First download:** started at 08:16 by `launchctl kickstart` of the update agent, so
+    it runs under launchd, from `dumps.wikimedia.org` (the metalink's priority-1 mirror).
+    It measured about 5 MB/s, giving an estimate of about 6.7 h for 118.7 GiB, plus hashing
+    and the hot copy.
+  - **Network under launchd:** the uv-managed Python downloads fine under launchd. The
+    per-binary trouble seen on Maxs_MBP didn't happen here.
+  - `caffeinate` holds a PreventUserIdleSystemSleep assertion for the job.
 
 #### Browsing benchmark (HDD vs SSD)
 
@@ -416,20 +431,24 @@ Measures how much the hot copy helps, and how slow the HDD fallback is. It doesn
 index the page cache can hold. Stage 5 is the first time the same large ZIM is on both
 drives.
 
-- **Setup:** query kiwix-serve on `localhost` with `curl -w '%{time_total}'`, so Wi-Fi
-  latency isn't counted. Serve the same version once from `HOT_DIR` and once from the HDD.
-  A small script in `scripts/` records the results.
+- **Setup:** `scripts/bench_browse.py` starts its own kiwix-serve on `127.0.0.1`, so
+  Wi-Fi latency isn't counted. It serves just the given ZIM, and is run once for the
+  `HOT_DIR` copy and once for the HDD copy of the same version. It was tested on the small
+  ZIM, where every request type returned real content.
 - **Requests:**
   1. A text-heavy article (HTML only).
   2. An image-heavy article, plus every image it references.
   3. A title suggestion (the search box's autocomplete).
   4. A full-text search.
 - **Conditions:**
-  - **Cold, spun down (HDD only):** the drive has been idle long enough to spin down. The
-    time includes spin-up.
-  - **Cold:** the page cache is cleared by unmounting and remounting the drive (no
-    `sudo purge` needed).
-  - **Warm:** each request is repeated straight after a cold one.
+  - **Cold:** the first request for an item in the run. That item's data is almost
+    certainly not cached, but the ZIM's index may be partly cached.
+  - **Warm:** the same request repeated straight after.
+  - **Changed from the first version of this plan (2026-11-23):**
+    - Cache clearing by unmounting is dropped, because another project of the user's is
+      writing to Starfish_Prime, and unmounting it would disrupt that.
+    - The "spun down" case is dropped for the same reason: that activity keeps the HDD
+      spinning. Spin-up delay therefore isn't measured.
 - **Repeats:** 5 different articles per request type and condition; report the median and
   the maximum.
 - **Use of the results:** if the HDD numbers are painful, possible follow-ups are noted in

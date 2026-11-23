@@ -7,3 +7,5 @@ logs/
 # ZIM files belong on the data drive (DATA_DIR), never in this Dropbox folder.
 *.zim
 *.zim.part
+# Browsing benchmark output (scripts/bench_browse.py); results go in the plan doc.
+bench_*.json

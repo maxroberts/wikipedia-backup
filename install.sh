@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Install / re-install wikibackup on this Mac: Python env, kiwix-tools, and the launchd
-# agent that serves Wikipedia on the LAN (com.local.wikibackup-serve).
+# Install / re-install wikibackup on this Mac: Python env, kiwix-tools, and two launchd
+# agents: com.local.wikibackup-serve (kiwix-serve on the LAN, always running) and
+# com.local.wikibackup-update (`wikibackup update` on the 1st of each month at 04:00;
+# loading it doesn't start a run).
 #
 # Idempotent: safe to re-run after pulling new code or editing the plist template.
 # What it changes outside this repo:
 #   ~/.local/opt/kiwix-tools-<version>/, ~/.local/bin/kiwix-{serve,manage}  (install-tools)
 #   DATA_DIR/software/ and HOT_DIR/software/  (kiwix-tools backups, if the drives are mounted)
-#   ~/Library/Logs/wikibackup/, ~/Library/LaunchAgents/com.local.wikibackup-serve.plist
+#   ~/Library/Logs/wikibackup/, ~/Library/LaunchAgents/com.local.wikibackup-{serve,update}.plist
 # Undo with ./uninstall.sh (it leaves the tools, backups and data in place).
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LABEL="com.local.wikibackup-serve"
-PLIST_SRC="${PROJECT_DIR}/launchd/${LABEL}.plist.template"
-PLIST_DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
+LABELS=("com.local.wikibackup-serve" "com.local.wikibackup-update")
 LOG_DIR="${HOME}/Library/Logs/wikibackup"
 
 echo "==> Project dir: ${PROJECT_DIR}"
@@ -38,21 +38,30 @@ fi
 echo "==> Installing kiwix-tools"
 "${PROJECT_DIR}/.venv/bin/wikibackup" install-tools
 
-# 4. LaunchAgent
+# 4. LaunchAgents. Re-loading the serve agent restarts it (RunAtLoad). The update agent
+# has no RunAtLoad, so loading it only schedules it. enable clears any "disabled"
+# override left by an earlier `launchctl disable`.
 mkdir -p "${LOG_DIR}" "${HOME}/Library/LaunchAgents"
-sed -e "s|__REPO__|${PROJECT_DIR}|g" -e "s|__HOME__|${HOME}|g" "${PLIST_SRC}" > "${PLIST_DEST}"
-plutil -lint "${PLIST_DEST}" >/dev/null
-echo "==> Installed plist at ${PLIST_DEST}"
-
-if launchctl print "gui/$(id -u)/${LABEL}" >/dev/null 2>&1; then
-    echo "==> Unloading existing agent"
-    launchctl bootout "gui/$(id -u)/${LABEL}" 2>/dev/null || true
-fi
-# bootstrap starts the agent at once (RunAtLoad), so no kickstart is needed. enable clears
-# any "disabled" override left by an earlier `launchctl disable`.
-echo "==> Loading agent"
-launchctl bootstrap "gui/$(id -u)" "${PLIST_DEST}"
-launchctl enable "gui/$(id -u)/${LABEL}" 2>/dev/null || true
+for LABEL in "${LABELS[@]}"; do
+    PLIST_SRC="${PROJECT_DIR}/launchd/${LABEL}.plist.template"
+    PLIST_DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
+    sed -e "s|__REPO__|${PROJECT_DIR}|g" -e "s|__HOME__|${HOME}|g" "${PLIST_SRC}" > "${PLIST_DEST}"
+    plutil -lint "${PLIST_DEST}" >/dev/null
+    echo "==> Installed plist at ${PLIST_DEST}"
+    if launchctl print "gui/$(id -u)/${LABEL}" >/dev/null 2>&1; then
+        echo "==> Unloading existing ${LABEL}"
+        launchctl bootout "gui/$(id -u)/${LABEL}" 2>/dev/null || true
+        # bootout returns before the old process has exited; bootstrapping before then
+        # fails with "Bootstrap failed: 5: Input/output error". Wait up to 10 s.
+        for _ in $(seq 1 20); do
+            launchctl print "gui/$(id -u)/${LABEL}" >/dev/null 2>&1 || break
+            sleep 0.5
+        done
+    fi
+    echo "==> Loading ${LABEL}"
+    launchctl bootstrap "gui/$(id -u)" "${PLIST_DEST}"
+    launchctl enable "gui/$(id -u)/${LABEL}" 2>/dev/null || true
+done
 
 # 5. Firewall note
 if /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate | grep -q enabled; then
@@ -66,3 +75,5 @@ fi
 echo
 echo "==> Done. Check with:  ${PROJECT_DIR}/.venv/bin/wikibackup status"
 echo "Server log:            tail -f '${LOG_DIR}/serve.log'"
+echo "Update log:            logs/wikibackup.log in DATA_DIR (see .env); launchd output in ${LOG_DIR}/update.log"
+echo "Run an update now:     launchctl kickstart gui/$(id -u)/com.local.wikibackup-update"

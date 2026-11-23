@@ -3,9 +3,9 @@
 Keep an offline, browsable copy of English Wikipedia on this Mac and serve it to the home
 LAN. It uses Kiwix ZIM files and `kiwix-serve`.
 
-> **Status: Stage 4 of 6.** All commands work, and `install.sh` sets up the launchd agent
-> that serves on the LAN. There's no monthly update job yet (Stage 5), and the real
-> 119 GiB download hasn't been run, so there's nothing to browse until then. The plan and
+> **Status: Stage 5 of 6.** All commands work. `install.sh` sets up the launchd agents
+> that serve on the LAN and run the monthly update. The first 119 GiB download is in
+> progress. The plan and
 > its stages are in [docs/kiwix_backup_plan.md](docs/kiwix_backup_plan.md).
 
 ## What it will do
@@ -47,15 +47,19 @@ LAN. It uses Kiwix ZIM files and `kiwix-serve`.
    `uv run wikibackup status` reports it if it's missing or can't be created.
 
 2. Install. This creates `.env` from `.env.example` if it's missing, syncs the Python
-   environment, backs up and installs kiwix-tools, and loads the launchd agent:
+   environment, backs up and installs kiwix-tools, and loads two launchd agents:
+   `com.local.wikibackup-serve` (the server, always running) and
+   `com.local.wikibackup-update` (`wikibackup update` on the 1st of each month at 04:00):
 
    ```sh
    ./install.sh
    uv run wikibackup status
    ```
 
-   It's safe to run again after pulling new code. `./uninstall.sh` stops and removes the
-   agent, leaving tools and data in place.
+   It's safe to run again after pulling new code. `./uninstall.sh` stops and removes both
+   agents, leaving tools and data in place. To run the update now rather than waiting for
+   the 1st, use `launchctl kickstart gui/$(id -u)/com.local.wikibackup-update`. It keeps
+   the Mac from idle-sleeping (`caffeinate -i`) while it runs.
 
 3. For development: `uv sync --dev && uv run pytest`.
 
@@ -73,7 +77,9 @@ uv run wikibackup serve    # run kiwix-serve in the foreground (the launchd agen
 uv run wikibackup install-tools   # back up kiwix-tools builds, install the macOS one
 ```
 
-- The server log is `~/Library/Logs/wikibackup/serve.log`. Restart the server with
+- Logs: the server's is `~/Library/Logs/wikibackup/serve.log`. Updates log to
+  `DATA_DIR/logs/wikibackup.log`, with a progress line per GiB while downloading, and
+  launchd's own output goes to `~/Library/Logs/wikibackup/update.log`. Restart the server with
   `launchctl kickstart -k gui/$(id -u)/com.local.wikibackup-serve`.
 - **Firewall:** the macOS application firewall was off when this was set up. If you turn
   it on and other devices can't connect, allow kiwix-serve with
@@ -155,18 +161,20 @@ Flow:
 - `update` and `prune`: `cli` → `config` → `update`, which uses `catalog`, `download`,
   `library`, `software` (backups) and `server` (`library.xml`).
 - `serve`: launchd → `.venv/bin/wikibackup serve` → `server.run_serve` → kiwix-serve.
+- Monthly: launchd → `caffeinate -i .venv/bin/wikibackup update`.
 
 Outside the package:
 
 - `install.sh` and `uninstall.sh` set up or remove everything on this Mac.
-- `launchd/com.local.wikibackup-serve.plist.template` is the agent definition; `install.sh`
+- `launchd/*.plist.template` define the two agents, `serve` and `update`; `install.sh`
   fills in the paths.
+- `scripts/bench_browse.py` is the HDD vs SSD browsing benchmark (see the plan).
 
 Tests are in `tests/`. They use saved Kiwix responses in `tests/fixtures/`, a local HTTP
 server and fake kiwix-tools (`tests/conftest.py`), and temporary folders, so they never
 touch the internet, the real drives or `~/.local`.
 
-Planned (see the plan doc): the monthly update job (Stage 5).
+Planned (see the plan doc): the README pass (Stage 6).
 
 Data never lives in this repo:
 

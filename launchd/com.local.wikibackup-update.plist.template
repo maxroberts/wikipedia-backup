@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent that runs `wikibackup update` once a month (see src/wikibackup/update.py):
+  check Kiwix's catalog, download a new release if the policy allows, verify it, refresh
+  the hot copy and prune. A template: install.sh replaces __REPO__ and __HOME__ and
+  installs the result as ~/Library/LaunchAgents/com.local.wikibackup-update.plist.
+  Edit this file, not the copy.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.local.wikibackup-update</string>
+
+    <!-- caffeinate -i keeps the Mac from idle-sleeping only while the update runs (a
+         download can take hours). It changes no power settings, and a closed lid on
+         battery still sleeps the Mac; an interrupted download resumes on the next run. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-i</string>
+        <string>__REPO__/.venv/bin/wikibackup</string>
+        <string>update</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+
+    <!-- The 1st of each month at 04:00 local time. If the Mac is asleep then, launchd runs
+         the missed job once when it wakes. If the archive drive isn't attached, the run
+         logs "nothing to do" and exits 0; the next chance is a month later, or a manual
+         `wikibackup update`. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Day</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>4</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- wikibackup also writes its own log to DATA_DIR/logs/wikibackup.log. This one
+         catches anything printed before that is set up (e.g. "archive drive not
+         mounted"). -->
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/wikibackup/update.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/wikibackup/update.log</string>
+</dict>
+</plist>

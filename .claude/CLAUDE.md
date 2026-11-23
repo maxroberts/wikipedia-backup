@@ -46,7 +46,9 @@ to the home LAN by `kiwix-serve` under launchd. Design and stages:
   `library.xml`.
 - Tests use fake kiwix-tools (`tests/conftest.py`, autouse). Don't let a test touch the
   real `~/.local` or the network.
-- The server is the launchd agent `com.local.wikibackup-serve`; its log is in
-  `~/Library/Logs/wikibackup/serve.log`.
+- Two launchd agents: `com.local.wikibackup-serve` (log in
+  `~/Library/Logs/wikibackup/serve.log`) and `com.local.wikibackup-update` (monthly; logs
+  in `DATA_DIR/logs/wikibackup.log`). Re-run `install.sh` after changing a plist template.
+- Another project of the user's writes to Starfish_Prime, so don't unmount it.
 - The user's global rules apply: the user makes all commits; after each stage, pause for
   review.
