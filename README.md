@@ -1,8 +1,8 @@
-# wikibackup
+# wikipedia-backup
 
 Keep an offline, browsable copy of English Wikipedia (with images) on a Mac, and serve it
-to every device on the home network. It uses Kiwix ZIM files and `kiwix-serve`.
-wikibackup does three things:
+to every device on the home network. It uses Kiwix ZIM files and `kiwix-serve`. Its
+command and Python package have the short name `wikibackup`. It does three things:
 - downloads a new release about every 6 months
 - verifies it and keeps the last 3
 - serves the newest one at `http://<this-mac>.local:8080/`
@@ -36,7 +36,7 @@ wikibackup does three things:
 
 ### Prerequisites
 
-- **A Mac with Apple Silicon.** wikibackup installs Kiwix's macOS arm64 build.
+- **A Mac with Apple Silicon.** `install.sh` installs Kiwix's macOS arm64 build.
 - **[uv](https://docs.astral.sh/uv/getting-started/installation/).** It installs Python
   3.12 itself if needed. kiwix-tools isn't on Homebrew, so `install.sh` downloads Kiwix's
   official build into `~/.local/opt/`. You don't need to install it yourself.
@@ -57,7 +57,7 @@ Mount both drives before installing. `install.sh` backs up kiwix-tools only when
 archive drive is mounted, and copies the backups to the SSD only if it's mounted too. The
 hot-copy folder must exist and be writable by you.
 
-wikibackup creates `DATA_DIR` and `HOT_DIR` itself if it can. On this Mac, though, the
+`wikibackup` creates `DATA_DIR` and `HOT_DIR` itself if it can. On this Mac, though, the
 top level of the T7 belongs to root, so create the hot-copy folder by hand:
 
 ```sh
@@ -182,7 +182,7 @@ uv run wikibackup install-tools   # back up the kiwix-tools builds and install t
 
 ### When the server is reachable
 
-- **This Mac must be awake.** wikibackup changes no power settings.
+- **This Mac must be awake.** This project changes no power settings.
 - **The T7 must be attached.** The code and `.venv` live on the T7, so the server can't
   start without it, even though the HDD has a copy. With the T7 attached and the HDD
   unplugged, the hot copy is still served.

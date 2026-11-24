@@ -1,4 +1,7 @@
-# wikibackup (project notes)
+# wikipedia-backup (project notes)
+
+The command and Python package are called `wikibackup` (short name); the repo is
+`wikipedia-backup`. Only prose uses the repo name.
 
 Offline English Wikipedia via Kiwix ZIM files, downloaded about every 6 months and served
 to the home LAN by `kiwix-serve` under launchd. Design and stages:

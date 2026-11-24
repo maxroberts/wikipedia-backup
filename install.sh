@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install / re-install wikibackup on this Mac: Python env, kiwix-tools, and two launchd
+# Install / re-install wikipedia-backup (the `wikibackup` command) on this Mac: Python env, kiwix-tools, and two launchd
 # agents: com.local.wikibackup-serve (kiwix-serve on the LAN, always running) and
 # com.local.wikibackup-update (`wikibackup update` on the 1st of each month at 04:00;
 # loading it doesn't start a run).

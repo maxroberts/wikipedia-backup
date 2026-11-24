@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop and remove the wikibackup launchd agents (com.local.wikibackup-serve and
+# Stop and remove wikipedia-backup's launchd agents (com.local.wikibackup-serve and
 # com.local.wikibackup-update). A running update is stopped; its partial download stays
 # and resumes on the next update.
 #
