@@ -8,7 +8,7 @@ to the home LAN by `kiwix-serve` under launchd. Design and stages:
 
 - `uv sync --dev`: install
 - `uv run pytest`: tests
-- `uv run wikibackup <check|status|update|prune|serve>`: the CLI
+- `uv run wikibackup <check|status|update|prune|serve|install-tools>`: the CLI
 - Real end-to-end test without the 119 GiB download: a scratch `config.toml` tracking
   `openzim_en_all` / `maxi` (3.4 MB), plus `DATA_DIR` and `HOT_DIR` pointing at scratch
   folders: `uv run wikibackup --config <scratch>/config.toml update`
@@ -48,7 +48,8 @@ to the home LAN by `kiwix-serve` under launchd. Design and stages:
   real `~/.local` or the network.
 - Two launchd agents: `com.local.wikibackup-serve` (log in
   `~/Library/Logs/wikibackup/serve.log`) and `com.local.wikibackup-update` (monthly; logs
-  in `DATA_DIR/logs/wikibackup.log`). Re-run `install.sh` after changing a plist template.
+  in `DATA_DIR/logs/wikibackup.log`, and launchd's output in
+  `~/Library/Logs/wikibackup/update.log`). Re-run `install.sh` after changing a plist template.
 - Another project of the user's writes to Starfish_Prime, so don't unmount it.
 - The user's global rules apply: the user makes all commits; after each stage, pause for
   review.

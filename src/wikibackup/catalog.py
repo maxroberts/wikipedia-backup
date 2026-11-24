@@ -1,7 +1,7 @@
 """Find the newest Kiwix release of a tracked book, and its exact size, SHA-256 and mirrors.
 
-``cli check`` (and, from Stage 3, ``update``) calls ``latest_release`` and then
-``fetch_metalink``. Nothing here writes to disk.
+``cli check`` and ``update.run_update`` call ``latest_release``; ``check`` and
+``update.fetch_and_install`` then call ``fetch_metalink``. Nothing here writes to disk.
 
 Two network sources, both checked on 2026-11-23 (see "How the parts work" in
 ``docs/kiwix_backup_plan.md``):

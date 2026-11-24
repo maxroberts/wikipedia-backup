@@ -1,6 +1,6 @@
 # Plan: offline English Wikipedia on this Mac with Kiwix
 
-**Status:** adopted, Stage 5 in progress (first download running) · **Date:** 2026-11-23 · **Scope:** downloading,
+**Status:** adopted and implemented (all 6 stages done) · **Date:** 2026-11-23 · **Scope:** downloading,
 keeping and serving English Wikipedia (maxi) ZIM files on this MacBook Air, for the home LAN
 
 ## TL;DR
@@ -94,18 +94,17 @@ wasn't checked against a source in this session *(unverified)*.
   hashes, plus SHA-1 hashes of every 4 MiB piece. A plain `<file>.zim.sha256` sidecar
   holds the same SHA-256 [4].
 - The metalink also lists mirror URLs with priorities. The copy fetched on 2026-11-23 said
-  "Found 12 mirrors" and listed 7, starting with `dumps.wikimedia.org` (priority 1). Stage 3
-  can download from one of these directly, staying on a single mirror for the whole
-  download instead of going through the redirector each time. `catalog.parse_metalink`
-  already reads them.
+  "Found 12 mirrors" and listed 7, starting with `dumps.wikimedia.org` (priority 1).
+  Since Stage 3, downloads go to these mirrors directly, in priority order, so a download
+  stays on one mirror unless an attempt fails. The redirector is the last resort.
 - The ZIM's URL is the `.meta4` URL without `.meta4`. `download.kiwix.org` redirects (301)
   to `lb.download.kiwix.org`, which redirects (302) to a mirror. In the test it was
   `dumps.wikimedia.org`.
 - A request for `Range: bytes=1000-1999`, after following the redirects, returned
   `206 Partial Content` with `Content-Range: bytes 1000-1999/127418087648`, so resuming
-  works on that mirror. The redirector may pick a different mirror for each request, so the
-  downloader re-resolves the URL on every attempt and checks that `Content-Range` agrees with
-  the size and offset it expects.
+  works on that mirror. The redirector may pick a different mirror for each request, which
+  is why downloads go to the mirrors directly. Every attempt also checks that
+  `Content-Range` agrees with the size and offset it expects.
 
 ### Serving: kiwix-serve
 
@@ -193,7 +192,7 @@ copies are the only history.
 | kiwix-tools backups (`software/kiwix-tools/*.tar.gz` + `.sha256`) | in both `DATA_DIR` and `HOT_DIR` | HDD + SSD |
 | `library.xml` (generated) | `STATE_DIR` = `~/.local/state/wikibackup/` | internal disk |
 | kiwix-tools, installed | `~/.local/opt/kiwix-tools-<version>/`, symlinks in `~/.local/bin/` | internal disk |
-| serve log | `~/Library/Logs/wikibackup/serve.log` | internal disk |
+| serve log; launchd's output for the update agent | `~/Library/Logs/wikibackup/serve.log`, `update.log` | internal disk |
 | Code, config, docs, `.venv` | this repo, inside Dropbox on the T7 | SSD |
 
 The archive is the source of truth: `manifest.json` records every kept version's release
@@ -217,7 +216,9 @@ isn't in `wheel` (found on 2026-11-23). The user created
 
 - **Fetch** (`wikibackup update`, run monthly by launchd):
   1. Read the catalog and choose the `wikipedia_en_all` entry whose flavour is `maxi`.
-     Compare its release date with the newest version in the archive.
+     Compare its version (the `YYYY-MM` in the file name, not the catalog's `issued`
+     date) with the newest verified version in the archive. If the archive has none,
+     download.
   2. Download only if a newer release exists **and** the newest archived version is at
      least `min_age_months` (6) old.
   3. Download into `partial/` on the HDD, resuming if interrupted.
@@ -256,10 +257,15 @@ isn't in `wheel` (found on 2026-11-23). The user created
     appears.
   - SIGTERM is passed on to kiwix-serve. If kiwix-serve exits, `serve` exits with the same
     status, and launchd restarts it.
-- **Install** (`install.sh`, which runs `wikibackup install-tools`): `uv sync`; back up
-  the kiwix-tools builds; unpack the macOS one into `~/.local/opt`; fill in the plist
-  template and load the agent. `uninstall.sh` unloads the agent and removes the plist,
-  leaving tools and data in place.
+- **Install** (`install.sh`, which runs `wikibackup install-tools`):
+  1. `uv sync`.
+  2. Back up the kiwix-tools builds.
+  3. Unpack the macOS build into `~/.local/opt`.
+  4. Fill in the two plist templates and load both agents: `serve`, and the monthly
+     `update`.
+
+  `uninstall.sh` unloads both agents and removes their plists, leaving tools and data in
+  place.
 - **Status** (`wikibackup status`) shows:
   - the versions in the archive, with age and size
   - whether the hot copy is present and current
@@ -348,8 +354,8 @@ Each stage ends with a summary and a pause for the user's review. The user makes
   - macOS's `shasum -a 256` of both copies matched Kiwix's separate `.sha256` file.
   - A run starting from a 1 MiB `.part` resumed ("1048576 already present") and produced a
     file identical to the full download.
-  - Not yet exercised on the real drives: the `/Volumes` mount checks with scratch folders
-    on Starfish_Prime and the T7. Stage 5's first real run will be the first.
+  - At the time, the `/Volumes` mount checks hadn't run on the real drives. Stage 5's
+    first real run on Starfish_Prime and the T7 exercised them, and it worked.
   - Choices made in this stage (all documented in `update.py`):
     - Downloads go to the metalink's mirrors in priority order, then the redirector.
     - A `flock` lock in `DATA_DIR` keeps two runs from overlapping.
@@ -369,8 +375,8 @@ Each stage ends with a summary and a pause for the user's review. The user makes
     Design
   - test `--monitorLibrary` against a file replaced by rename
   - add the `serve` launchd agent
-  - decide whether to handle drives being plugged in or unplugged while serving (Design,
-    "Known gap")
+  - decide whether to handle drives being plugged in or unplugged while serving (decided:
+    the `serve` loop checks every 60 s; see Design, "Commands")
   - check the macOS application firewall
   - write `install.sh` and `uninstall.sh` in the style of `Maxs_MBP`
 - **Verify:**
@@ -379,7 +385,7 @@ Each stage ends with a summary and a pause for the user's review. The user makes
   - `status` shows the server is up on the LAN address
   - the user opens it from another device
 - **Rollback:** `uninstall.sh` (unloads the agent and removes the plist).
-- **Done (2026-11-23), awaiting the user's checks:** 110 tests pass.
+- **Done (2026-11-23):** 110 tests pass.
   - The real kiwix-serve and kiwix-manage experiments are recorded under "How the parts
     work".
   - `wikibackup install-tools` ran for real. It archived all 3 builds on the HDD (MD5s
@@ -393,9 +399,8 @@ Each stage ends with a summary and a pause for the user's review. The user makes
   - The macOS application firewall is **off** on this Mac.
   - The user opened the test server from another machine on the LAN, and it worked
     (2026-11-23). On SIGTERM, `serve` stopped kiwix-serve cleanly (status 0).
-  - **Not done yet:**
-    - running `install.sh`, which loads the launchd agent; with the archive empty, it will
-      serve an empty library until Stage 5's download
+  - `install.sh` was first run at the start of Stage 5, which loaded the `serve` agent.
+    It served an empty library until the first download finished.
   - Changes from the earlier plan (user, 2026-11-23): only the newest version is served;
     `-z` is used; kiwix-tools builds are backed up.
 
@@ -416,10 +421,26 @@ Each stage ends with a summary and a pause for the user's review. The user makes
     "Bootstrap failed: 5: Input/output error", because `launchctl bootout` returns before
     the old process exits. The script now waits until the agent is gone (up to 10 s), and
     a second re-install ran cleanly.
-  - **First download:** started at 08:16 by `launchctl kickstart` of the update agent, so
-    it runs under launchd, from `dumps.wikimedia.org` (the metalink's priority-1 mirror).
-    It measured about 5 MB/s, giving an estimate of about 6.7 h for 118.7 GiB, plus hashing
-    and the hot copy.
+  - **First run** (`wikipedia_en_all_maxi_2026-08.zim`), started at 08:16 by
+    `launchctl kickstart` of the update agent, so it ran under launchd. Times from
+    `DATA_DIR/logs/wikibackup.log`:
+
+    | Step | Start → end | Took |
+    |---|---|---|
+    | Download from `dumps.wikimedia.org` (priority-1 mirror), no retries | 08:16 → 15:35 | 7 h 19 min (4.6–4.8 MB/s) |
+    | SHA-256 check of the `.part` file on the HDD | 15:35 → 15:53 | 18 min (~114 MB/s) |
+    | Copy to `HOT_DIR` and verify | 15:53 → 16:18 | 25 min |
+    | Rebuild `library.xml` | 16:18 | under 1 s |
+
+    The whole run took about 8 h, with no warnings or errors.
+  - **Verification:**
+    - Both copies passed their SHA-256 checks, which the log records as "installed … in
+      the archive" and "hot copy … verified".
+    - `status` exited 0 and reported the archive version 2026-08 (118.7 GiB, verified) and
+      the hot copy as current.
+    - `lsof` showed that kiwix-serve has only the `HOT_DIR` copy open.
+    - `http://192.168.0.50:8080/content/wikipedia_en_all_maxi/Epistemology` returned 200.
+      The undated URL works because of `-z`.
   - **Network under launchd:** the uv-managed Python downloads fine under launchd. The
     per-binary trouble seen on Maxs_MBP didn't happen here.
   - `caffeinate` holds a PreventUserIdleSystemSleep assertion for the job.
@@ -455,15 +476,61 @@ drives.
   the doc (e.g. keeping a drive awake, or giving the second-newest version a hot copy too).
   None is planned.
 
+**Results (2026-11-23, `wikipedia_en_all_maxi_2026-08.zim`):** run at 16:20, just after
+the update finished, SSD first and then HDD. The values are in seconds: the median, with
+the maximum in brackets, over 5 items each.
+
+| Request | SSD cold | HDD cold | SSD warm | HDD warm |
+|---|---|---|---|---|
+| Text article | 0.005 (0.070) | 0.156 (1.80) | 0.000 (0.000) | 0.000 (0.001) |
+| Article plus all its images | 0.036 (0.082) | 5.77 (12.7) | 0.011 (0.036) | 0.022 (0.27) |
+| Title suggestion | 0.126 (0.376) | 8.09 (14.4) | 0.007 (0.020) | 0.394 (0.466) |
+| Full-text search | 0.400 (0.589) | 5.70 (10.5) | 0.275 (0.480) | 1.32 (3.76) |
+
+What the table shows:
+
+- **SSD:** every cold request finished within 0.6 s.
+- **HDD:** a cold text article is still fast (median 0.16 s). But a cold image-heavy page,
+  a title suggestion or a full-text search typically took 5–8 s, and up to 14 s.
+- **So the hot copy makes a large difference.** With only the HDD fallback, browsing still
+  works but feels slow until the cache warms up.
+
+Limits of these numbers:
+
+- **HDD contention.** Another project of the user's was writing to Starfish_Prime during
+  the run. So the HDD numbers include contention, and on an idle drive they may be lower.
+- **Page cache.** The cache wasn't cleared. The update had just written the SSD copy and
+  read the HDD copy, but each is 119 GiB, so only a small part could still be cached. That
+  part may favour either drive.
+- **Sample size.** It's one run of 5 items per request type, and spin-up delay isn't
+  measured (see Conditions).
+- **Follow-ups.** None is planned. The HDD is only a fallback.
+
+Raw timings: `bench_ssd.json` and `bench_hdd.json` (gitignored; regenerate with the
+commands in the script's header).
+
 ### 6. README
 - **Goal:** a README a new user can set up from, with the Codebase architecture section and
   the LAN and firewall notes (readme-setup skill).
+- **Done (2026-11-23):** the README was rewritten from the code, not from the previous
+  README.
+  - Users' material comes first: prerequisites with measured download times, a
+    drive-preparation step, what `install.sh` does, a first download and how to browse,
+    and day-to-day commands with a log table.
+  - It covers configuration (every `.env` key, with its default), LAN access and the
+    firewall, a troubleshooting table, uninstalling, and reading the backups without this
+    project.
+  - The developer guide follows: Codebase architecture, the data layout, and tests.
+  - The troubleshooting messages were checked against the code. `install.sh` wasn't re-run
+    for this stage; it ran twice in Stage 5.
 
 ## Risks
 
-- **Download time.** 118.7 GiB at an assumed 100 Mbit/s is about 2.8 hours; at 20 Mbit/s,
-  about 14 hours. These are projections, not measured, and the Mac may sleep in between.
-  Resume makes interruptions cheap, but a sleeping Mac pauses the download.
+- **Download time.** The first 118.7 GiB download took 7 h 19 min, at 4.6–4.8 MB/s from
+  `dumps.wikimedia.org` (Stage 5). The full run took about 8 h, including hashing and the
+  hot copy. A slower connection or mirror would take longer. `caffeinate -i` stops idle
+  sleep during the run, but closing the lid on battery still pauses it. Resume makes
+  interruptions cheap.
 - **Different mirror on each request.** One mirror might serve a different or stale file.
   The final SHA-256 check catches this; the cost is re-downloading. Since Stage 3, each
   attempt goes straight to a mirror from the metalink, so a download only changes mirror
@@ -474,14 +541,14 @@ drives.
   `maxi` entry rather than doing nothing silently.
 - **Firewall and binary trust.** The macOS application firewall may block incoming
   connections to an unsigned `kiwix-serve`. Stage 4 checks this.
-- **HDD browsing speed** (only when the HDD copy is served as a fallback). These are
-  estimates, not yet measured. An HDD random read takes about 10 ms, against about 0.1 ms on
-  an SSD. A cold article needs a handful of reads (tens of ms). An image-heavy page needs
-  one more lookup and read per image (possibly over 1 s cold), and full-text search does
-  many scattered reads. The biggest delay is likely spin-up: several seconds on the first
-  request after the drive has gone idle. macOS's page cache hides much of this once browsing
-  warms up. The SSD hot copy avoids this for the newest version; only the HDD fallback still
-  pays it. The Stage 5 benchmark measures it.
+- **HDD browsing speed** (only when the HDD copy is served as a fallback). This is now
+  measured, in the Stage 5 benchmark:
+  - A cold text article is fast: median 0.16 s.
+  - A cold image-heavy page, title suggestion or full-text search took a median of 5–8 s,
+    and up to 14 s. The same requests on the SSD took under 0.6 s.
+  - Spin-up delay after the drive idles wasn't measured, and would add to this.
+  - The SSD hot copy avoids this for the newest version. Only the HDD fallback still pays
+    it.
 - **The hot copy shares the T7 with Dropbox and other backups.** The copy step checks free
   space first and skips with a log message rather than filling the drive.
 - **Serving depends on the T7.** The code lives on the T7, so with the T7 unplugged the

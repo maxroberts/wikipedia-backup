@@ -27,8 +27,8 @@ A ``.part`` file larger than the expected size is deleted and the download resta
 Hashing isn't done during the download, because a resumed download would have to re-hash
 the existing prefix anyway; the caller hashes the finished file.
 
-**Timing:** hashing reads the whole file once. 119 GiB at an assumed 150 MB/s (a typical
-HDD; not measured) takes about 14 minutes.
+**Timing:** hashing reads the whole file once. For the 118.7 GiB maxi on Starfish_Prime
+(HDD) it took 18 minutes, about 114 MB/s (Stage 5, 2026-11-23).
 """
 
 import hashlib
