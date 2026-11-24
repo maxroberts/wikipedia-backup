@@ -16,6 +16,9 @@ It also replaces ``software._fetch`` with one that raises ``SoftwareError``, so
 ``update``'s kiwix-tools backup step never contacts download.kiwix.org. Tests of that
 step replace it again.
 
+**desktop** (autouse) points ``alert.DESKTOP`` at a temporary folder and returns it, so
+no test writes a failure alert to the real ``~/Desktop``.
+
 ``file_server`` runs a ``ThreadingHTTPServer`` on ``127.0.0.1`` (a random free port) for
 one test. Tests register content with ``server.add(path, data, mode)``, where ``mode``
 picks the behaviour:
@@ -38,7 +41,7 @@ from pathlib import Path
 
 import pytest
 
-from wikibackup import software
+from wikibackup import alert, software
 
 FAKE_MANAGE = """\
 import sys, os
@@ -87,6 +90,14 @@ def fake_kiwix_tools(tmp_path_factory, monkeypatch) -> Path:
 
     monkeypatch.setattr(software, "_fetch", no_network)
     return tools
+
+
+@pytest.fixture(autouse=True)
+def desktop(tmp_path_factory, monkeypatch) -> Path:
+    """A temporary stand-in for ``~/Desktop`` (``alert.DESKTOP``); return it."""
+    folder = tmp_path_factory.mktemp("Desktop")
+    monkeypatch.setattr(alert, "DESKTOP", folder)
+    return folder
 
 
 class FileServer:

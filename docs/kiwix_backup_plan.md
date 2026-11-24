@@ -115,8 +115,11 @@ All from the kiwix-serve documentation [5]:
   changes." Separately, reloading "can be forced anytime by sending a SIGHUP signal".
 - `-i ADDR, --address=ADDR`: by default the server "listens on all available IP
   addresses". `-p PORT`: "default: 80". This project passes `--address all` (or the
-  configured address) and `--port 8080` explicitly. Nothing on this Mac was listening on
-  8080 on 2026-11-23.
+  configured address) and `--port <PORT>` explicitly. Nothing on this Mac was listening on
+  8080 on 2026-11-23, and the project used 8080 at first. On 2026-11-24 the default moved
+  to **9454** ("WIKI" on a phone keypad), to avoid clashes with other software that uses
+  8080. Nothing was listening on 9454, and it isn't in `/etc/services`. The Stage 4 and 5
+  notes below record 8080, because that was the port in use then.
 - **No authentication:** the docs list no login, password or access-control option. The
   nearest are `-L/--ipConnectionLimit` and `-b/--blockexternal`, which don't restrict who
   can connect.
@@ -273,6 +276,17 @@ isn't in `wheel` (found on 2026-11-23). The user created
   - what `library.xml` serves and whether those files exist; HTTP answers on `127.0.0.1`
     and the LAN address; the `.local` name; the firewall state; whether kiwix-tools is
     installed
+- **Failure alert** (added 2026-11-24, after Stage 6, at the user's request): a real
+  download happens only about every 6 months, and nobody reads the logs that often.
+  - **When it's written:** an `update` that fails, or that can't run because the archive
+    drive isn't mounted, writes `~/Desktop/wikipedia-backup UPDATE FAILED.txt`
+    (`alert.py`). The file holds the error, what to do next, and the paths to the repo,
+    `DATA_DIR`, `HOT_DIR` and all three logs.
+  - **When it's deleted:** by the next successful `update`.
+  - **Not covered:** warnings and `prune` don't alert. With the T7 detached, the job can't
+    start, so nothing can alert.
+  - **Tested on 2026-11-24:** under a temporary launchd agent, macOS let the job write to
+    `~/Desktop` with no privacy prompt. A real `update` (up to date) then deleted the file.
 - **Config:** `config.toml` (committed) holds policy and which books to track. `.env` (not
   committed) holds machine paths (`DATA_DIR`, `HOT_DIR`, `STATE_DIR`) and the port. If
   `HOT_DIR` is empty, the hot copy is turned off and everything is served from the HDD.
@@ -605,8 +619,8 @@ curl -sSL https://download.kiwix.org/zim/wikipedia/ | grep -E 'wikipedia_en_all_
 # kiwix-tools builds
 curl -sSL https://download.kiwix.org/release/kiwix-tools/ | grep -o 'kiwix-tools_macos-arm64[^"<]*'
 brew info kiwix-tools
-# Port 8080 free (no output)
-lsof -nP -iTCP:8080 -sTCP:LISTEN
+# Port free (no output): 8080 on 2026-11-23, 9454 on 2026-11-24
+lsof -nP -iTCP:9454 -sTCP:LISTEN
 ```
 
 ## References

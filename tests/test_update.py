@@ -9,6 +9,13 @@ Scenarios: first download (archive + manifest + hot copy + log), nothing to do, 
 release replacing the hot copy and pruning the oldest, a bad checksum, an SSD that's
 unmounted or full, adopting an unlisted file, the lock, prune housekeeping, and an
 unmounted archive.
+
+The Desktop alert tests (at the end) run ``cli.main`` and check the alert file in the
+temporary Desktop from ``conftest.py``:
+- it's written on a failed ``update`` (checksum error, unexpected exception, bad config,
+  unmounted archive)
+- it's cleared by the next successful ``update``
+- ``prune`` never writes one
 """
 
 import dataclasses
@@ -20,9 +27,9 @@ from pathlib import Path
 
 import pytest
 
-from wikibackup import catalog, cli, download, library, update
+from wikibackup import alert, catalog, cli, download, library, update
 from wikibackup.catalog import Metalink, Release
-from wikibackup.config import Config, KiwixTools, Policy, ZimSpec
+from wikibackup.config import Config, ConfigError, KiwixTools, Policy, ZimSpec
 
 BOOK = ZimSpec("wikipedia_en_all", "maxi")
 TODAY = date(2027, 3, 1)
@@ -236,3 +243,65 @@ def test_archive_unmounted_is_not_an_error(config, monkeypatch, capsys):
     assert cli.main(["update"]) == cli.EXIT_OK
     assert "archive drive not mounted" in capsys.readouterr().err
     assert not config.data_dir.exists()
+    assert (alert.DESKTOP / alert.ALERT_NAME).exists()  # an unrun update still alerts
+
+
+# --- Desktop alert ----------------------------------------------------------------------
+
+def alert_file(desktop) -> str | None:
+    """The alert file's text, or None if there's no alert."""
+    path = desktop / alert.ALERT_NAME
+    return path.read_text() if path.exists() else None
+
+
+def test_failed_update_writes_alert_then_success_clears_it(config, kiwix, desktop):
+    kiwix.sha_override = "0" * 64
+    kiwix.publish("2027-02")
+    assert cli.main(["update"]) == cli.EXIT_ERROR
+    text = alert_file(desktop)
+    assert "doesn't match the metalink's" in text  # the specific error
+    assert str(config.data_dir) in text and str(config.hot_dir) in text
+    assert str(config.data_dir / "logs" / "wikibackup.log") in text
+    assert str(alert.REPO_ROOT) in text
+    assert "update.log" in text and "serve.log" in text
+
+    kiwix.sha_override = None
+    kiwix.publish("2027-02")
+    assert cli.main(["update"]) == cli.EXIT_OK
+    assert alert_file(desktop) is None
+
+
+def test_unexpected_exception_alerts_and_exits_1(config, monkeypatch, desktop):
+    def boom(cfg, today):
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(update, "run_update", boom)
+    assert cli.main(["update"]) == cli.EXIT_ERROR
+    assert "unexpected RuntimeError: kaboom" in alert_file(desktop)
+    log_text = (config.data_dir / "logs" / "wikibackup.log").read_text()
+    assert "Traceback" in log_text and "kaboom" in log_text
+
+
+def test_bad_config_alerts_without_paths(monkeypatch, desktop):
+    def bad(path=None):
+        raise ConfigError("PORT must be an integer, got 'x'")
+
+    monkeypatch.setattr(cli, "load_config", bad)
+    assert cli.main(["update"]) == cli.EXIT_ERROR
+    text = alert_file(desktop)
+    assert "PORT must be an integer" in text and "unknown (config didn't load)" in text
+
+
+def test_prune_failure_writes_no_alert(config, desktop):
+    update.prepare_archive(config.data_dir)
+    with update.archive_lock(config.data_dir):
+        assert cli.main(["prune"]) == cli.EXIT_ERROR
+    assert alert_file(desktop) is None
+
+
+def test_unwritable_desktop_doesnt_change_the_result(config, kiwix, monkeypatch, tmp_path):
+    monkeypatch.setattr(alert, "DESKTOP", tmp_path / "no" / "such" / "folder")
+    kiwix.sha_override = "0" * 64
+    kiwix.publish("2027-02")
+    assert cli.main(["update"]) == cli.EXIT_ERROR
+    assert "couldn't write the Desktop alert" in (config.data_dir / "logs" / "wikibackup.log").read_text()

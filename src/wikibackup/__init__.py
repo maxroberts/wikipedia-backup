@@ -28,6 +28,8 @@ Modules, in dependency order:
 - ``update``: the ``update`` and ``prune`` commands. It decides the order of downloading,
   verifying, installing, hot-copying, pruning and rebuilding the library, under a lock,
   and never deletes a version before its replacement is verified.
+- ``alert``: writes a text file to ``~/Desktop`` when ``update`` fails, with the error and
+  every relevant path, and deletes it after the next successful ``update``.
 - ``cli``: the ``wikibackup`` command: ``check``, ``status``, ``update``, ``prune``,
   ``serve``, ``install-tools``.
 """

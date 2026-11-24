@@ -28,8 +28,9 @@
 
     <!-- The 1st of each month at 04:00 local time. If the Mac is asleep then, launchd runs
          the missed job once when it wakes. If the archive drive isn't attached, the run
-         logs "nothing to do" and exits 0; the next chance is a month later, or a manual
-         `wikibackup update`. -->
+         logs "nothing to do", writes the Desktop alert (src/wikibackup/alert.py) and
+         exits 0; the next chance is a month later, or a manual `wikibackup update`.
+         Any failed run also writes the alert. -->
     <key>StartCalendarInterval</key>
     <dict>
         <key>Day</key>

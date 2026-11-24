@@ -33,12 +33,23 @@ If the archive drive isn't mounted, ``update`` and ``prune`` say so and exit 0 w
 doing anything, so the monthly launchd job doesn't report a failure while the drive is
 attached elsewhere.
 
+**Desktop alert** (``alert.py``): when ``update`` fails, a text file with the error and
+all the relevant paths is written to ``~/Desktop``, and the next successful ``update``
+deletes it. Real downloads happen only about every 6 months, so this is how a failure
+gets noticed. "Fails" here means:
+- any error that makes ``update`` exit 1
+- an unexpected exception, which is logged with its traceback and exits 1
+- the archive drive not being mounted, which still exits 0
+
+``prune`` and the other commands never write an alert.
+
 The global option ``--config PATH`` reads a different ``config.toml`` (the default is
 the one in the repo root). The end-to-end tests use it with a small book.
 
 Exit statuses: 0 success (or nothing to do); 1 an error such as a bad config, an
 unreadable manifest, a catalog, network or checksum failure, too little free space,
 another run holding the lock, or a library or kiwix-tools failure, reported on stderr;
+for ``update`` and ``prune``, also an unexpected exception (logged with its traceback);
 2 a usage error. ``serve`` exits with kiwix-serve's own status.
 """
 
@@ -49,7 +60,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from wikibackup import download, library, server, software, update
+from wikibackup import alert, download, library, server, software, update
 from wikibackup.catalog import CatalogError, fetch_metalink, latest_release
 from wikibackup.config import Config, ConfigError, load_config
 
@@ -229,25 +240,51 @@ def setup_logging(config: Config, to_file: bool) -> None:
 
 def run_writer(command: str, config: Config, today: date) -> int:
     """Run ``update`` or ``prune``: check the archive drive, prepare the folders, set up
-    logging, and call ``update.run_update`` or ``update.run_prune``."""
+    logging, and call ``update.run_update`` or ``update.run_prune``.
+
+    For ``update`` only, it manages the Desktop alert (see the module docstring). It
+    writes the alert on an unmounted archive drive, an expected error or an unexpected
+    exception, and clears it on success. An unexpected exception is logged with its
+    traceback and returns ``EXIT_ERROR``, rather than propagating.
+    """
     if not library.is_available(config.data_dir):
         print(
             f"wikibackup {command}: archive drive not mounted ({config.data_dir}); nothing to do",
             file=sys.stderr,
         )
+        if command == "update":
+            setup_logging(config, to_file=False)  # the archive's log file isn't reachable
+            alert.write_alert(
+                f"the archive drive isn't mounted ({config.data_dir}), so the update "
+                "couldn't run. Attach the drive and run the update again.",
+                config,
+            )
         return EXIT_OK
-    update.prepare_archive(config.data_dir)
-    setup_logging(config, to_file=True)
-    log.info("wikibackup %s: start", command)
     try:
+        update.prepare_archive(config.data_dir)
+        setup_logging(config, to_file=True)
+        log.info("wikibackup %s: start", command)
         if command == "update":
             update.run_update(config, today)
         else:
             update.run_prune(config)
     except EXPECTED_ERRORS as exc:
         log.error("wikibackup %s: %s", command, exc)
+        if command == "update":
+            alert.write_alert(str(exc), config)
+        return EXIT_ERROR
+    except Exception as exc:  # a bug: log the traceback, alert, and exit 1
+        log.exception("wikibackup %s: unexpected error", command)
+        if command == "update":
+            alert.write_alert(
+                f"unexpected {type(exc).__name__}: {exc} (probably a bug; the traceback is "
+                "in the update log)",
+                config,
+            )
         return EXIT_ERROR
     log.info("wikibackup %s: done", command)
+    if command == "update":
+        alert.clear_alert()
     return EXIT_OK
 
 
@@ -275,6 +312,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_writer(args.command, config, date.today())
     except EXPECTED_ERRORS as exc:
         print(f"wikibackup {args.command}: error: {exc}", file=sys.stderr)
+        if args.command == "update":  # e.g. a bad config: alert without its paths
+            alert.write_alert(str(exc), None)
         return EXIT_ERROR
 
 

@@ -5,7 +5,7 @@ to every device on the home network. It uses Kiwix ZIM files and `kiwix-serve`. 
 command and Python package have the short name `wikibackup`. It does three things:
 - downloads a new release about every 6 months
 - verifies it and keeps the last 3
-- serves the newest one at `http://<this-mac>.local:8080/`
+- serves the newest one at `http://<this-mac>.local:9454/`
 
 > **Status:** all six stages of [the plan](docs/kiwix_backup_plan.md) are done. The plan
 > holds the design decisions, the measurements and the stage notes. As of 2026-11-23, the
@@ -31,6 +31,10 @@ command and Python package have the short name `wikibackup`. It does three thing
   removed, it switches to whichever copy is available.
 - **Software backups.** The kiwix-tools builds that read ZIM files are backed up on both
   drives: macOS arm64, plus Linux x86_64 and aarch64 for a possible move to Ubuntu 24.04.
+- **Failure alert.** A real download happens only about every 6 months, so failures
+  shouldn't depend on someone reading the logs. If an update fails, a file called
+  `wikipedia-backup UPDATE FAILED.txt` appears on the Desktop. It holds the error, what to
+  do next, and the paths to the repo, the data folders and every log.
 
 ## Getting started
 
@@ -139,16 +143,28 @@ The log adds a line for each GiB downloaded. A run ends with `wikibackup update:
 
 To browse, open any of these from any device on the LAN:
 
-- `http://<this-mac>.local:8080/`: the library page. `status` prints this Mac's name.
-- `http://<this-mac>.local:8080/content/wikipedia_en_all_maxi/`: Wikipedia itself. This
+- `http://<this-mac>.local:9454/`: the library page. `status` prints this Mac's name.
+- `http://<this-mac>.local:9454/content/wikipedia_en_all_maxi/`: Wikipedia itself. This
   undated address keeps working after updates, so it's a good one to bookmark.
-- `http://<LAN IP>:8080/`, for devices that can't resolve `.local` names. `status` prints
+- `http://<LAN IP>:9454/`, for devices that can't resolve `.local` names. `status` prints
   the IP.
 
 ## Using it day to day
 
 Normally there's nothing to do. The update agent runs monthly and the server keeps
-running. All commands are run from the repo folder:
+running.
+
+**If `wikipedia-backup UPDATE FAILED.txt` appears on your Desktop**, the last update
+failed. Open it, follow its steps, and run the update again. The next successful update
+deletes the file, so if the file is still there afterwards, the update failed again.
+- **What writes an alert:** any `update` that exits with an error (including a bug's
+  traceback), and an `update` that couldn't run because the archive drive wasn't
+  mounted.
+- **What doesn't:** warnings, such as a skipped hot copy, and `prune`.
+- **One case gets no alert:** if the T7 isn't attached, launchd can't start the job at
+  all, because the code lives there.
+
+All commands are run from the repo folder:
 
 ```sh
 uv run wikibackup status          # drives, free space, archived versions, hot copy, server
@@ -186,7 +202,7 @@ uv run wikibackup install-tools   # back up the kiwix-tools builds and install t
 - **The T7 must be attached.** The code and `.venv` live on the T7, so the server can't
   start without it, even though the HDD has a copy. With the T7 attached and the HDD
   unplugged, the hot copy is still served.
-- **Anyone on the LAN can read it; there's no login.** Don't forward port 8080 on the
+- **Anyone on the LAN can read it; there's no login.** Don't forward port 9454 on the
   router or otherwise expose it beyond the LAN.
 
 ## Configuration
@@ -203,7 +219,7 @@ takes the default from `.env.example`, and a variable set in the shell overrides
 | `HOT_DIR` | `/Volumes/BackUp_T7/wikipedia-storage` | The hot copy of the newest version, plus software backups. Empty turns the hot copy off. Never inside Dropbox. |
 | `STATE_DIR` | `~/.local/state/wikibackup` | The generated `library.xml`. On the internal disk, so it's there whichever drive is missing. Don't move `library.xml` by hand: it stores ZIM paths relative to its own folder. |
 | `BIND_ADDRESS` | `all` | kiwix-serve `--address`. `all` lets LAN devices connect; `127.0.0.1` limits it to this Mac. |
-| `PORT` | `8080` | kiwix-serve `--port`. |
+| `PORT` | `9454` | kiwix-serve `--port`. 9454 spells "WIKI" on a phone keypad, and is less likely to clash than 8080. |
 | `LOG_LEVEL` | `INFO` | A Python logging level: `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
 
 **`config.toml`** (committed): what to keep.
@@ -241,7 +257,7 @@ Errors from `update` and `prune` are logged as `ERROR wikibackup update: <messag
 | Symptom | Cause and fix |
 |---|---|
 | `status`: hot copy `CAN'T be created: … isn't writable` | The parent folder belongs to root. Create the folder yourself (see [step 1](#1-prepare-the-drives-one-time)). Meanwhile, the HDD copy is served. |
-| `wikibackup update: archive drive not mounted (…); nothing to do` | Mount the drive and run the update again (`launchctl kickstart …` or `uv run wikibackup update`). A missed monthly run isn't retried until the next month. |
+| `wikibackup update: archive drive not mounted (…); nothing to do` (and a Desktop alert) | Mount the drive and run the update again (`launchctl kickstart …` or `uv run wikibackup update`). A missed monthly run isn't retried until the next month. |
 | `another update or prune is running (…/.wikibackup.lock)` | Only one runs at a time. Check with `pgrep -fl "wikibackup update"`, and wait for it to finish. The lock is released automatically if the process dies. |
 | `archive needs N GiB free for …, has M GiB` | `update` needs the download's remaining size plus 5 GiB free. Free up space, or lower `keep_versions`. |
 | Log warning `hot copy skipped: …` | The SSD is short of space, not mounted, or not writable. The HDD copy is served meanwhile, and the next `update` or `prune` tries the hot copy again. |
@@ -270,7 +286,7 @@ each. On Linux, for example:
 
 ```sh
 tar xzf kiwix-tools_linux-x86_64-3.8.2.tar.gz
-./kiwix-tools_linux-x86_64-3.8.2/kiwix-serve --port 8080 /path/to/wikipedia_en_all_maxi_2026-08.zim
+./kiwix-tools_linux-x86_64-3.8.2/kiwix-serve --port 9454 /path/to/wikipedia_en_all_maxi_2026-08.zim
 ```
 
 ## Developer guide
@@ -321,7 +337,10 @@ The package is `src/wikibackup/`. Its modules, in the order they depend on each 
   - Nothing is deleted until its replacement is verified and `library.xml` no longer
     lists it.
   - `update` also refreshes the kiwix-tools backups.
-- `cli.py`: the `wikibackup` command, its exit statuses and its logging setup.
+- `alert.py`: the Desktop alert. `cli` calls `write_alert` when `update` fails (or
+  can't run because the archive drive isn't mounted), and `clear_alert` when it succeeds.
+- `cli.py`: the `wikibackup` command, its exit statuses, its logging setup and the
+  Desktop alert calls.
 
 Flow:
 

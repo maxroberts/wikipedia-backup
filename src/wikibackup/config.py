@@ -33,7 +33,7 @@ ENV_DEFAULTS = {
     "HOT_DIR": "/Volumes/BackUp_T7/wikipedia-storage",
     "STATE_DIR": "~/.local/state/wikibackup",
     "BIND_ADDRESS": "all",
-    "PORT": "8080",
+    "PORT": "9454",
     "LOG_LEVEL": "INFO",
 }
 
@@ -101,8 +101,8 @@ def parse_env_file(text: str) -> dict[str, str]:
 
     Accepts ``KEY=VALUE`` lines; blank lines and lines starting with ``#`` are skipped.
     Whitespace around the key and the value is stripped, and one pair of matching quotes
-    around the value is removed. Inline comments are **not** supported: ``PORT=8080 # x``
-    gives the value ``8080 # x``. A line without ``=`` raises ``ConfigError``.
+    around the value is removed. Inline comments are **not** supported: ``PORT=9454 # x``
+    gives the value ``9454 # x``. A line without ``=`` raises ``ConfigError``.
     """
     values = {}
     for lineno, raw in enumerate(text.splitlines(), start=1):

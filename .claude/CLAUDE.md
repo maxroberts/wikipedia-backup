@@ -47,8 +47,10 @@ to the home LAN by `kiwix-serve` under launchd. Design and stages:
   used: it gives stable undated URLs.
 - kiwix-manage writes ZIM paths relative to `library.xml`'s folder, so don't move
   `library.xml`.
-- Tests use fake kiwix-tools (`tests/conftest.py`, autouse). Don't let a test touch the
-  real `~/.local` or the network.
+- Tests use fake kiwix-tools and a temporary Desktop (`tests/conftest.py`, autouse).
+  Don't let a test touch the real `~/.local`, `~/Desktop` or the network.
+- A failed `update` writes `~/Desktop/wikipedia-backup UPDATE FAILED.txt` (`alert.py`); the
+  next successful `update` deletes it.
 - Two launchd agents: `com.local.wikibackup-serve` (log in
   `~/Library/Logs/wikibackup/serve.log`) and `com.local.wikibackup-update` (monthly; logs
   in `DATA_DIR/logs/wikibackup.log`, and launchd's output in

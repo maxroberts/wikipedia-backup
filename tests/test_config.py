@@ -59,7 +59,7 @@ def test_defaults_when_no_env_file(tmp_path):
     assert config.data_dir == Path(ENV_DEFAULTS["DATA_DIR"])
     assert config.hot_dir == Path(ENV_DEFAULTS["HOT_DIR"])
     assert config.state_dir == Path.home() / ".local/state/wikibackup"
-    assert config.port == 8080
+    assert config.port == 9454
 
 
 def test_env_file_then_environment_override(tmp_path):
